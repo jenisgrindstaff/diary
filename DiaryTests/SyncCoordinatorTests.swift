@@ -154,6 +154,24 @@ final class SyncCoordinatorTests: XCTestCase {
         XCTAssertTrue(events.contains { $0.summary == "Queued change discarded" })
     }
 
+    func testFullSyncClearsCursorBeforeNetworkValidation() async throws {
+        let context = try makeContext()
+        let appState = makeAppState()
+        let coordinator = SyncCoordinator()
+        let checkpoint = SyncCheckpoint(
+            cursor: "stale-cursor",
+            deviceID: appState.deviceID,
+            serverBaseURL: "http://127.0.0.1:18080"
+        )
+        context.insert(checkpoint)
+        try context.save()
+
+        await coordinator.fullSync(modelContext: context, appState: appState)
+
+        XCTAssertNil(checkpoint.cursor)
+        XCTAssertEqual(appState.syncStatus, .failed("Enter a valid server URL in Settings."))
+    }
+
     func testConflictResolutionShowsLocalAndServerCopiesAndPreparesOverwrite() async throws {
         let context = try makeContext()
         let appState = makeAppState()

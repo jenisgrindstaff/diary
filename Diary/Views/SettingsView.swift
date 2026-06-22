@@ -113,6 +113,14 @@ struct SettingsView: View {
                     }
                     .disabled(syncCoordinator.isSyncing)
 
+                    Button("Full Resync", systemImage: "arrow.clockwise.icloud") {
+                        appState.saveSettings()
+                        Task {
+                            await syncCoordinator.fullSync(modelContext: modelContext, appState: appState)
+                        }
+                    }
+                    .disabled(syncCoordinator.isSyncing)
+
                     NavigationLink {
                         SyncActivityView()
                     } label: {

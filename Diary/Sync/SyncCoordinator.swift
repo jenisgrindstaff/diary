@@ -66,6 +66,18 @@ final class SyncCoordinator {
         isSyncing = false
     }
 
+    func fullSync(modelContext: ModelContext, appState: AppState) async {
+        do {
+            try resetSyncCursor(modelContext: modelContext)
+        } catch {
+            lastError = error.localizedDescription
+            appState.syncStatus = .failed(error.localizedDescription)
+            return
+        }
+
+        await sync(modelContext: modelContext, appState: appState)
+    }
+
     func registerDevice(appState: AppState) async {
         guard let baseURL = appState.serverURL else {
             appState.syncStatus = .failed("Enter a valid server URL in Settings.")
