@@ -533,7 +533,9 @@ func TestWebImportRedirectsWithStatus(t *testing.T) {
 	}
 	defer srv.Close()
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/import", nil)
+	req := httptest.NewRequest(http.MethodPost, "/admin/import", strings.NewReader("csrf_token="+webCSRFToken))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	withCSRFCookie(req)
 	rec := httptest.NewRecorder()
 	srv.Routes().ServeHTTP(rec, req)
 
@@ -577,6 +579,7 @@ func TestCreateEntryRedirectsToDetail(t *testing.T) {
 	}, nil)
 	req := httptest.NewRequest(http.MethodPost, "/entries", body)
 	req.Header.Set("Content-Type", contentType)
+	withCSRFCookie(req)
 	rec := httptest.NewRecorder()
 	srv.Routes().ServeHTTP(rec, req)
 
@@ -626,6 +629,7 @@ func TestCreateEntryWithMedia(t *testing.T) {
 	}})
 	req := httptest.NewRequest(http.MethodPost, "/entries", body)
 	req.Header.Set("Content-Type", contentType)
+	withCSRFCookie(req)
 	rec := httptest.NewRecorder()
 	srv.Routes().ServeHTTP(rec, req)
 
@@ -729,8 +733,10 @@ func TestUpdateEntryPreservesAttachments(t *testing.T) {
 	form.Set("people", "Charlotte")
 	form.Set("tags", "edited")
 	form.Set("body_markdown", "* Edited body from the web.")
+	form.Set("csrf_token", webCSRFToken)
 	req := httptest.NewRequest(http.MethodPost, "/entries/"+entry.ID, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	withCSRFCookie(req)
 	rec := httptest.NewRecorder()
 	srv.Routes().ServeHTTP(rec, req)
 
@@ -770,7 +776,9 @@ func TestTrashEntryMovesFileAndReindexes(t *testing.T) {
 	entry := entries[0]
 	oldPath := entry.VaultPath
 
-	req := httptest.NewRequest(http.MethodPost, "/entries/"+entry.ID+"/trash", nil)
+	req := httptest.NewRequest(http.MethodPost, "/entries/"+entry.ID+"/trash", strings.NewReader("csrf_token="+webCSRFToken))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	withCSRFCookie(req)
 	rec := httptest.NewRecorder()
 	srv.Routes().ServeHTTP(rec, req)
 
@@ -876,6 +884,7 @@ func TestWebAttachMediaUpdatesEntry(t *testing.T) {
 	body, contentType := multipartBody(t, "media", "new photo.jpg", []byte("uploaded image bytes"))
 	req := httptest.NewRequest(http.MethodPost, "/entries/"+entry.ID+"/attachments", body)
 	req.Header.Set("Content-Type", contentType)
+	withCSRFCookie(req)
 	rec := httptest.NewRecorder()
 	srv.Routes().ServeHTTP(rec, req)
 
@@ -1014,11 +1023,169 @@ type testUpload struct {
 	Data     []byte
 }
 
+func TestWebFormRejectsMissingCSRF(t *testing.T) {
+	srv := testServerWithImport(t)
+	defer srv.Close()
+
+	entries, err := srv.store.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := entries[0]
+
+	// No cookie, no token field → rejected.
+	req := httptest.NewRequest(http.MethodPost, "/entries/"+entry.ID+"/trash", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 without CSRF, got %d", rec.Code)
+	}
+
+	// Cookie present but form field mismatched → still rejected.
+	req = httptest.NewRequest(http.MethodPost, "/entries/"+entry.ID+"/trash", strings.NewReader("csrf_token=wrong"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	withCSRFCookie(req)
+	rec = httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 on token mismatch, got %d", rec.Code)
+	}
+}
+
+func TestNewEntryFormSetsCSRFCookieAndField(t *testing.T) {
+	srv := testServerWithImport(t)
+	defer srv.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/entries/new", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	var token string
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "csrf_token" {
+			token = c.Value
+		}
+	}
+	if token == "" {
+		t.Fatal("expected csrf_token cookie to be set")
+	}
+	if !strings.Contains(rec.Body.String(), `name="csrf_token" value="`+token+`"`) {
+		t.Fatal("expected matching csrf_token hidden field in the form")
+	}
+}
+
+func TestShareTokenRoundTripAndTamper(t *testing.T) {
+	srv := testServerWithImport(t)
+	defer srv.Close()
+
+	token := srv.shareToken("entry-123")
+	id, ok := srv.verifyShareToken(token)
+	if !ok || id != "entry-123" {
+		t.Fatalf("round trip failed: id=%q ok=%v", id, ok)
+	}
+	if _, ok := srv.verifyShareToken(token + "x"); ok {
+		t.Fatal("tampered token should be rejected")
+	}
+	if _, ok := srv.verifyShareToken("garbage"); ok {
+		t.Fatal("garbage token should be rejected")
+	}
+}
+
+func TestShareLinkRendersReadOnlyEntry(t *testing.T) {
+	srv := testServerWithImport(t)
+	defer srv.Close()
+
+	entries, err := srv.store.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := entries[0]
+
+	req := httptest.NewRequest(http.MethodGet, "/share/"+srv.shareToken(entry.ID), nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("share status %d body %s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, entry.Title) {
+		t.Fatal("share page should show the entry title")
+	}
+	for _, forbidden := range []string{"Move to Trash", "/admin/reindex", "/admin/import", "/edit"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("share page must not expose %q:\n%s", forbidden, body)
+		}
+	}
+
+	// Invalid token is a 404.
+	bad := httptest.NewRequest(http.MethodGet, "/share/not-a-real-token", nil)
+	badRec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(badRec, bad)
+	if badRec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for invalid share token, got %d", badRec.Code)
+	}
+}
+
+func TestFilterEntriesByTag(t *testing.T) {
+	entries := []diary.Entry{
+		{ID: "a", Tags: []string{"family", "trip"}},
+		{ID: "b", Tags: []string{"work"}},
+		{ID: "c", Tags: []string{"family"}},
+	}
+	got := filterEntries(entries, "", "family", "", "")
+	if len(got) != 2 || got[0].ID != "a" || got[1].ID != "c" {
+		t.Fatalf("expected entries a and c for tag=family, got %+v", got)
+	}
+	if len(filterEntries(entries, "", "missing", "", "")) != 0 {
+		t.Fatal("expected no entries for an unused tag")
+	}
+}
+
+func TestHomeRendersTagFilter(t *testing.T) {
+	srv := testServerWithImport(t)
+	defer srv.Close()
+
+	// Create a tagged entry through the web flow.
+	form, contentType := multipartFormBody(t, map[string]string{
+		"date":          "2026-07-02",
+		"title":         "Tagged",
+		"body_markdown": "* Has a unique tag.",
+		"tags":          "uniquetag",
+	}, nil)
+	req := withCSRFCookie(httptest.NewRequest(http.MethodPost, "/entries", form))
+	req.Header.Set("Content-Type", contentType)
+	srv.Routes().ServeHTTP(httptest.NewRecorder(), req)
+
+	// The tag chip appears on the home page.
+	home := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(home, httptest.NewRequest(http.MethodGet, "/", nil))
+	if !strings.Contains(home.Body.String(), "#uniquetag") {
+		t.Fatal("expected the new tag chip on the home page")
+	}
+
+	// Filtering by it keeps the tagged entry and drops the others.
+	filtered := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(filtered, httptest.NewRequest(http.MethodGet, "/?tag=uniquetag", nil))
+	body := filtered.Body.String()
+	if !strings.Contains(body, "Tagged") {
+		t.Fatal("expected the tagged entry when filtering by its tag")
+	}
+	if strings.Contains(body, "Hello from the web") {
+		t.Fatal("entries without the tag should be filtered out")
+	}
+}
+
 func multipartFormBody(t *testing.T, values map[string]string, uploads []testUpload) (*bytes.Buffer, string) {
 	t.Helper()
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
+	if _, ok := values["csrf_token"]; !ok {
+		if err := writer.WriteField("csrf_token", webCSRFToken); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for key, value := range values {
 		if err := writer.WriteField(key, value); err != nil {
 			t.Fatal(err)
@@ -1037,6 +1204,16 @@ func multipartFormBody(t *testing.T, values map[string]string, uploads []testUpl
 		t.Fatal(err)
 	}
 	return &body, writer.FormDataContentType()
+}
+
+const webCSRFToken = "test-csrf-token"
+
+// withCSRFCookie attaches the cookie half of the double-submit CSRF token so a
+// test POST matches the csrf_token form field that multipartFormBody / the form
+// values carry.
+func withCSRFCookie(req *http.Request) *http.Request {
+	req.AddCookie(&http.Cookie{Name: "csrf_token", Value: webCSRFToken})
+	return req
 }
 
 func mediaEntry(t *testing.T, srv *Server) diary.Entry {

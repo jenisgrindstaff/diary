@@ -21,21 +21,28 @@ import (
 type homePageData struct {
 	Entries      []entryListItem
 	Subjects     []subjectCount
+	Tags         []tagCount
 	Archive      []archiveCount
 	Query        string
 	Subject      string
+	Tag          string
 	Year         string
 	Month        string
 	Message      string
 	TotalEntries int
 	ImportFiles  []string
+	CSRFToken    string
+	Public       bool
 }
 
 type detailPageData struct {
-	Entry    diary.Entry
-	BodyHTML template.HTML
-	RawBody  string
-	Message  string
+	Entry     diary.Entry
+	BodyHTML  template.HTML
+	RawBody   string
+	Message   string
+	ShareURL  string
+	CSRFToken string
+	Public    bool
 }
 
 type entryFormPageData struct {
@@ -49,6 +56,8 @@ type entryFormPageData struct {
 	Tags         string
 	BodyMarkdown string
 	Message      string
+	CSRFToken    string
+	Public       bool
 }
 
 type entryListItem struct {
@@ -57,6 +66,11 @@ type entryListItem struct {
 }
 
 type subjectCount struct {
+	Name  string
+	Count int
+}
+
+type tagCount struct {
 	Name  string
 	Count int
 }
@@ -77,6 +91,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	subject := strings.TrimSpace(r.URL.Query().Get("subject"))
+	tag := strings.TrimSpace(r.URL.Query().Get("tag"))
 	year := strings.TrimSpace(r.URL.Query().Get("year"))
 	month := strings.TrimSpace(r.URL.Query().Get("month"))
 	message := strings.TrimSpace(r.URL.Query().Get("message"))
@@ -88,20 +103,23 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 			searchEntries = []diary.Entry{}
 		}
 	}
-	filtered := listItems(filterEntries(searchEntries, subject, year, month))
+	filtered := listItems(filterEntries(searchEntries, subject, tag, year, month))
 	importFiles, _ := markdownFiles(s.cfg.ImportDir)
 
 	data := homePageData{
 		Entries:      filtered,
 		Subjects:     subjectCounts(entries),
+		Tags:         tagCounts(entries),
 		Archive:      archiveCounts(entries),
 		Query:        query,
 		Subject:      subject,
+		Tag:          tag,
 		Year:         year,
 		Month:        month,
 		Message:      message,
 		TotalEntries: len(entries),
 		ImportFiles:  importFiles,
+		CSRFToken:    ensureCSRFToken(w, r),
 	}
 
 	if err := pageTemplate.ExecuteTemplate(w, "home", data); err != nil {
@@ -123,12 +141,41 @@ func (s *Server) handleWebEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := pageTemplate.ExecuteTemplate(w, "detail", detailPageData{
+		Entry:     entry,
+		BodyHTML:  bodyHTML,
+		RawBody:   entry.BodyMarkdown,
+		Message:   strings.TrimSpace(r.URL.Query().Get("message")),
+		ShareURL:  absoluteURL(r, "/share/"+s.shareToken(entry.ID)),
+		CSRFToken: ensureCSRFToken(w, r),
+	}); err != nil {
+		s.logger.Error("render entry failed", "error", err)
+	}
+}
+
+func (s *Server) handleShare(w http.ResponseWriter, r *http.Request) {
+	entryID, ok := s.verifyShareToken(r.PathValue("token"))
+	if !ok {
+		writeError(w, http.StatusNotFound, "share link not found")
+		return
+	}
+	entry, err := s.store.Entry(entryID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "entry not found")
+		return
+	}
+	bodyHTML, err := renderMarkdown(entry.BodyMarkdown)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, publicMessage(err))
+		return
+	}
+
+	if err := pageTemplate.ExecuteTemplate(w, "share", detailPageData{
 		Entry:    entry,
 		BodyHTML: bodyHTML,
 		RawBody:  entry.BodyMarkdown,
-		Message:  strings.TrimSpace(r.URL.Query().Get("message")),
+		Public:   true,
 	}); err != nil {
-		s.logger.Error("render entry failed", "error", err)
+		s.logger.Error("render share failed", "error", err)
 	}
 }
 
@@ -139,6 +186,7 @@ func (s *Server) handleNewEntry(w http.ResponseWriter, r *http.Request) {
 		SubmitLabel: "Create Entry",
 		AllowMedia:  true,
 		Date:        time.Now().Format("2006-01-02"),
+		CSRFToken:   ensureCSRFToken(w, r),
 	}
 	if err := pageTemplate.ExecuteTemplate(w, "entryForm", data); err != nil {
 		s.logger.Error("render entry form failed", "error", err)
@@ -149,6 +197,10 @@ func (s *Server) handleCreateEntry(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 512<<20)
 	if err := r.ParseMultipartForm(64 << 20); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid form")
+		return
+	}
+	if !validCSRF(r) {
+		writeError(w, http.StatusForbidden, "invalid CSRF token")
 		return
 	}
 
@@ -162,6 +214,7 @@ func (s *Server) handleCreateEntry(w http.ResponseWriter, r *http.Request) {
 		People:       strings.TrimSpace(r.FormValue("people")),
 		Tags:         strings.TrimSpace(r.FormValue("tags")),
 		BodyMarkdown: strings.TrimSpace(r.FormValue("body_markdown")),
+		CSRFToken:    ensureCSRFToken(w, r),
 	}
 
 	createdAt, err := time.ParseInLocation("2006-01-02", data.Date, time.Local)
@@ -218,6 +271,7 @@ func (s *Server) handleEditEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := entryFormDataForEntry(entry)
+	data.CSRFToken = ensureCSRFToken(w, r)
 	if err := pageTemplate.ExecuteTemplate(w, "entryForm", data); err != nil {
 		s.logger.Error("render edit form failed", "error", err)
 	}
@@ -234,6 +288,10 @@ func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid form")
 		return
 	}
+	if !validCSRF(r) {
+		writeError(w, http.StatusForbidden, "invalid CSRF token")
+		return
+	}
 
 	data := entryFormPageData{
 		Heading:      "Edit Entry",
@@ -244,6 +302,7 @@ func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
 		People:       strings.TrimSpace(r.FormValue("people")),
 		Tags:         strings.TrimSpace(r.FormValue("tags")),
 		BodyMarkdown: strings.TrimSpace(r.FormValue("body_markdown")),
+		CSRFToken:    ensureCSRFToken(w, r),
 	}
 
 	createdAt, err := time.ParseInLocation("2006-01-02", data.Date, time.Local)
@@ -279,6 +338,10 @@ func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTrashEntry(w http.ResponseWriter, r *http.Request) {
+	if !validCSRF(r) {
+		writeError(w, http.StatusForbidden, "invalid CSRF token")
+		return
+	}
 	entryID := r.PathValue("id")
 	entry, err := s.store.Entry(entryID)
 	if err != nil {
@@ -308,6 +371,10 @@ func (s *Server) handleWebAttachMedia(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, 512<<20)
+	if !validCSRF(r) {
+		writeError(w, http.StatusForbidden, "invalid CSRF token")
+		return
+	}
 	file, header, err := r.FormFile("media")
 	if err != nil {
 		http.Redirect(w, r, "/entries/"+url.PathEscape(entryID)+"?message="+urlMessage("Choose a file to attach"), http.StatusSeeOther)
@@ -369,6 +436,10 @@ func (s *Server) handleWebAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWebImport(w http.ResponseWriter, r *http.Request) {
+	if !validCSRF(r) {
+		writeError(w, http.StatusForbidden, "invalid CSRF token")
+		return
+	}
 	result, err := s.importer.Import(s.cfg.ImportDir)
 	if err != nil {
 		http.Redirect(w, r, "/?message="+urlMessage("Import failed: "+publicMessage(err)), http.StatusSeeOther)
@@ -387,6 +458,10 @@ func (s *Server) handleWebImport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWebReindex(w http.ResponseWriter, r *http.Request) {
+	if !validCSRF(r) {
+		writeError(w, http.StatusForbidden, "invalid CSRF token")
+		return
+	}
 	if err := s.Reindex(); err != nil {
 		http.Redirect(w, r, "/?message="+urlMessage("Reindex failed: "+publicMessage(err)), http.StatusSeeOther)
 		return
@@ -395,11 +470,14 @@ func (s *Server) handleWebReindex(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/?message="+urlMessage("Reindexed vault"), http.StatusSeeOther)
 }
 
-func filterEntries(entries []diary.Entry, subject string, year string, month string) []diary.Entry {
+func filterEntries(entries []diary.Entry, subject string, tag string, year string, month string) []diary.Entry {
 	filtered := make([]diary.Entry, 0, len(entries))
 
 	for _, entry := range entries {
 		if subject != "" && !slices.Contains(entry.People, subject) {
+			continue
+		}
+		if tag != "" && !slices.Contains(entry.Tags, tag) {
 			continue
 		}
 		if year != "" && entry.CreatedAt.Format("2006") != year {
@@ -446,6 +524,28 @@ func subjectCounts(entries []diary.Entry) []subjectCount {
 	})
 
 	return subjects
+}
+
+func tagCounts(entries []diary.Entry) []tagCount {
+	counts := map[string]int{}
+	for _, entry := range entries {
+		for _, tag := range entry.Tags {
+			counts[tag]++
+		}
+	}
+
+	tags := make([]tagCount, 0, len(counts))
+	for name, count := range counts {
+		tags = append(tags, tagCount{Name: name, Count: count})
+	}
+	sort.Slice(tags, func(i, j int) bool {
+		if tags[i].Count == tags[j].Count {
+			return tags[i].Name < tags[j].Name
+		}
+		return tags[i].Count > tags[j].Count
+	})
+
+	return tags
 }
 
 func archiveCounts(entries []diary.Entry) []archiveCount {
@@ -579,13 +679,16 @@ var pageTemplate = template.Must(template.New("pages").Funcs(template.FuncMap{
 	},
 	"join":     strings.Join,
 	"urlquery": url.QueryEscape,
-	"queryFor": func(query string, subject string, year string, month string) string {
+	"queryFor": func(query string, subject string, tag string, year string, month string) string {
 		values := url.Values{}
 		if query != "" {
 			values.Set("q", query)
 		}
 		if subject != "" {
 			values.Set("subject", subject)
+		}
+		if tag != "" {
+			values.Set("tag", tag)
 		}
 		if year != "" {
 			values.Set("year", year)
@@ -896,17 +999,34 @@ const pageTemplates = `
       aside { position: static; }
       .bar { align-items: flex-start; flex-direction: column; }
     }
+    .share-box { margin: 12px 0 4px; }
+    .share-row { display: flex; gap: 8px; align-items: center; }
+    .share-row input {
+      flex: 1; padding: 8px 10px; border: 1px solid var(--line);
+      border-radius: 8px; background: var(--panel); color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+    }
+    .editor-toolbar { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+    .hint { margin-top: 6px; font-size: 13px; }
+    textarea.drag { outline: 2px dashed var(--accent); outline-offset: 2px; }
+    body.focus-mode header,
+    body.focus-mode .entry-form > p,
+    body.focus-mode .entry-form .form-row { display: none; }
+    body.focus-mode main { max-width: 760px; }
+    body.focus-mode .entry-form textarea { min-height: 70vh; }
   </style>
 </head>
 <body>
 <header>
   <div class="bar">
-    <a class="brand" href="/">Diary</a>
+    {{if .Public}}<span class="brand">Diary</span>{{else}}<a class="brand" href="/">Diary</a>{{end}}
+    {{if not .Public}}
     <div class="actions">
       <a class="button primary" href="/entries/new">New Entry</a>
-      <form method="post" action="/admin/import"><button class="primary" type="submit">Import</button></form>
-      <form method="post" action="/admin/reindex"><button type="submit">Reindex</button></form>
+      <form method="post" action="/admin/import"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="primary" type="submit">Import</button></form>
+      <form method="post" action="/admin/reindex"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button type="submit">Reindex</button></form>
     </div>
+    {{end}}
   </div>
 </header>
 <main>
@@ -914,6 +1034,56 @@ const pageTemplates = `
 
 {{define "layoutEnd"}}
 </main>
+<script>
+(function(){
+  document.querySelectorAll('[data-copy]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var el = document.querySelector(btn.getAttribute('data-copy'));
+      if(!el){ return; }
+      el.focus(); el.select();
+      if(navigator.clipboard){ navigator.clipboard.writeText(el.value); }
+      var label = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(function(){ btn.textContent = label; }, 1200);
+    });
+  });
+
+  document.querySelectorAll('[data-focus-toggle]').forEach(function(btn){
+    btn.addEventListener('click', function(){ document.body.classList.toggle('focus-mode'); });
+  });
+
+  var editor = document.getElementById('editor');
+  if(editor){
+    editor.addEventListener('keydown', function(e){
+      if((e.metaKey || e.ctrlKey) && e.key === 'Enter'){
+        var form = editor.closest('form');
+        if(form){ e.preventDefault(); form.requestSubmit ? form.requestSubmit() : form.submit(); }
+      }
+    });
+
+    var mediaInput = document.getElementById('media-input');
+    if(editor.hasAttribute('data-drop-target') && mediaInput && 'DataTransfer' in window){
+      ['dragover','dragenter'].forEach(function(ev){
+        editor.addEventListener(ev, function(e){ e.preventDefault(); editor.classList.add('drag'); });
+      });
+      ['dragleave','dragend'].forEach(function(ev){
+        editor.addEventListener(ev, function(){ editor.classList.remove('drag'); });
+      });
+      editor.addEventListener('drop', function(e){
+        editor.classList.remove('drag');
+        if(!e.dataTransfer || !e.dataTransfer.files.length){ return; }
+        e.preventDefault();
+        var dt = new DataTransfer();
+        Array.prototype.forEach.call(mediaInput.files, function(f){ dt.items.add(f); });
+        Array.prototype.forEach.call(e.dataTransfer.files, function(f){ dt.items.add(f); });
+        mediaInput.files = dt.files;
+        var note = document.getElementById('drop-note');
+        if(note){ note.textContent = mediaInput.files.length + ' file(s) ready'; }
+      });
+    }
+  }
+})();
+</script>
 </body>
 </html>
 {{end}}
@@ -926,20 +1096,29 @@ const pageTemplates = `
     <form method="get" action="/">
               <input type="search" name="q" value="{{.Query}}" placeholder="Search entries">
               {{if .Subject}}<input type="hidden" name="subject" value="{{.Subject}}">{{end}}
+              {{if .Tag}}<input type="hidden" name="tag" value="{{.Tag}}">{{end}}
               {{if .Year}}<input type="hidden" name="year" value="{{.Year}}">{{end}}
               {{if .Month}}<input type="hidden" name="month" value="{{.Month}}">{{end}}
-              <p><button type="submit">Search</button> {{if or .Query .Subject .Year .Month}}<a class="button" href="/">Clear</a>{{end}}</p>
+              <p><button type="submit">Search</button> {{if or .Query .Subject .Tag .Year .Month}}<a class="button" href="/">Clear</a>{{end}}</p>
             </form>
-            <h2>Subjects</h2>
+            <h2>People</h2>
             <div class="subjects">
               {{range .Subjects}}
-        <a class="chip {{if eq $.Subject .Name}}active{{end}}" href="{{queryFor $.Query .Name $.Year $.Month}}">{{.Name}} <span class="muted">{{.Count}}</span></a>
+        <a class="chip {{if eq $.Subject .Name}}active{{end}}" href="{{queryFor $.Query .Name $.Tag $.Year $.Month}}">{{.Name}} <span class="muted">{{.Count}}</span></a>
       {{end}}
     </div>
+    {{if .Tags}}
+    <h2 style="margin-top:22px;">Tags</h2>
+    <div class="subjects">
+      {{range .Tags}}
+        <a class="chip {{if eq $.Tag .Name}}active{{end}}" href="{{queryFor $.Query $.Subject .Name $.Year $.Month}}">#{{.Name}} <span class="muted">{{.Count}}</span></a>
+      {{end}}
+    </div>
+    {{end}}
     <h2 style="margin-top:22px;">Archive</h2>
     <div class="subjects">
       {{range .Archive}}
-        <a class="chip {{if and (eq $.Year .Year) (eq $.Month .Month)}}active{{end}}" href="{{queryFor $.Query $.Subject .Year .Month}}">{{.Label}} <span class="muted">{{.Count}}</span></a>
+        <a class="chip {{if and (eq $.Year .Year) (eq $.Month .Month)}}active{{end}}" href="{{queryFor $.Query $.Subject $.Tag .Year .Month}}">{{.Label}} <span class="muted">{{.Count}}</span></a>
       {{end}}
     </div>
     <h2 style="margin-top:22px;">Import</h2>
@@ -981,6 +1160,7 @@ const pageTemplates = `
 {{template "layoutStart" .}}
 {{if .Message}}<div class="notice">{{.Message}}</div>{{end}}
 <form class="detail entry-form" method="post" action="{{.Action}}" {{if .AllowMedia}}enctype="multipart/form-data"{{end}}>
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
   <p><a href="/">Back to entries</a></p>
   <h1>{{.Heading}}</h1>
   <div class="form-row">
@@ -1000,11 +1180,16 @@ const pageTemplates = `
     </label>
   </div>
   <label>Markdown
-    <textarea name="body_markdown">{{.BodyMarkdown}}</textarea>
+    <div class="editor-toolbar">
+      <button type="button" class="button" data-focus-toggle>Focus mode</button>
+    </div>
+    <textarea id="editor" name="body_markdown" {{if .AllowMedia}}data-drop-target{{end}}>{{.BodyMarkdown}}</textarea>
+    <p class="muted hint">⌘/Ctrl + Return to save.{{if .AllowMedia}} Drag files onto the editor to attach.{{end}}</p>
   </label>
   {{if .AllowMedia}}
     <label>Media
-      <input type="file" name="media" multiple accept="image/*,video/*,.pdf,.txt,.md,.markdown">
+      <input id="media-input" type="file" name="media" multiple accept="image/*,video/*,.pdf,.txt,.md,.markdown">
+      <span id="drop-note" class="muted"></span>
     </label>
   {{end}}
   <p><button class="primary" type="submit">{{.SubmitLabel}}</button></p>
@@ -1020,9 +1205,19 @@ const pageTemplates = `
     <a href="/">Back to entries</a>
     <a class="button" href="/entries/{{.Entry.ID}}/edit">Edit</a>
     <form method="post" action="/entries/{{.Entry.ID}}/trash">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
       <button class="danger" type="submit">Move to Trash</button>
     </form>
   </div>
+  {{if .ShareURL}}
+  <div class="share-box">
+    <label class="muted" for="share-url">Read-only share link</label>
+    <div class="share-row">
+      <input id="share-url" type="text" readonly value="{{.ShareURL}}" onfocus="this.select()">
+      <button type="button" class="button" data-copy="#share-url">Copy</button>
+    </div>
+  </div>
+  {{end}}
   <p class="muted">{{date .Entry.CreatedAt}}</p>
   <h1>{{.Entry.Title}}</h1>
   <div class="meta">
@@ -1057,6 +1252,7 @@ const pageTemplates = `
     </section>
   {{end}}
   <form class="attach-form" method="post" action="/entries/{{.Entry.ID}}/attachments" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <h2>Add Media</h2>
     <input type="file" name="media" multiple accept="image/*,video/*,.pdf,.txt,.md,.markdown">
     <button class="primary" type="submit">Attach</button>
@@ -1066,6 +1262,46 @@ const pageTemplates = `
     <summary class="muted">Raw Markdown</summary>
     <pre style="white-space:pre-wrap; overflow:auto;"><code>{{.RawBody}}</code></pre>
   </details>
+</article>
+{{template "layoutEnd" .}}
+{{end}}
+
+{{define "share"}}
+{{template "layoutStart" .}}
+<article class="detail">
+  <p class="muted">{{date .Entry.CreatedAt}}</p>
+  <h1>{{.Entry.Title}}</h1>
+  <div class="meta">
+    {{if .Entry.People}}<span>{{join .Entry.People ", "}}</span>{{end}}
+    {{if .Entry.Tags}}<span>{{join .Entry.Tags ", "}}</span>{{end}}
+  </div>
+  {{if .Entry.SubjectDetails}}
+    <div class="subject-details">
+      {{range .Entry.SubjectDetails}}
+        <span class="chip">{{.Name}}{{if .AgeText}} <span class="muted">{{.AgeText}}</span>{{end}}</span>
+      {{end}}
+    </div>
+  {{end}}
+  {{if .Entry.Attachments}}
+    <section class="media">
+      <div class="media-grid">
+        {{range .Entry.Attachments}}
+          <figure class="media-item">
+            {{if eq .Kind "image"}}
+              <img src="{{webAsset .}}" alt="{{.Filename}}" loading="lazy">
+            {{else if eq .Kind "video"}}
+              <video src="{{webAsset .}}" controls preload="metadata"></video>
+            {{else}}
+              <a href="{{webAsset .}}">{{.Filename}}</a>
+            {{end}}
+            <figcaption class="media-caption">{{.Filename}}</figcaption>
+          </figure>
+        {{end}}
+      </div>
+    </section>
+  {{end}}
+  <div class="body rendered-markdown">{{.BodyHTML}}</div>
+  <p class="muted" style="margin-top:32px;">Shared from Diary · read-only</p>
 </article>
 {{template "layoutEnd" .}}
 {{end}}

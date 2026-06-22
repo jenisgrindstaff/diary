@@ -33,6 +33,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /entries/{id}", s.handleUpdateEntry)
 	mux.HandleFunc("POST /entries/{id}/trash", s.handleTrashEntry)
 	mux.HandleFunc("GET /entries/{id}", s.handleWebEntry)
+	mux.HandleFunc("GET /share/{token}", s.handleShare)
 	mux.HandleFunc("POST /entries/{id}/attachments", s.handleWebAttachMedia)
 	mux.HandleFunc("GET /assets/{id}", s.handleWebAsset)
 	mux.HandleFunc("POST /admin/import", s.handleWebImport)
