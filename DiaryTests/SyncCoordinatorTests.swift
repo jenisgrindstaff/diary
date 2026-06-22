@@ -294,6 +294,129 @@ final class SyncCoordinatorTests: XCTestCase {
 }
 
 @MainActor
+final class DiaryIntentActionsTests: XCTestCase {
+    func testCreateEntryQueuesLocally() async throws {
+        let context = try makeContext()
+        try await DiaryIntentActions.createEntry(
+            text: "A thought worth keeping.",
+            title: "Note",
+            context: context,
+            appState: makeAppState(),
+            coordinator: SyncCoordinator()
+        )
+
+        let entries = try context.fetch(FetchDescriptor<DiaryEntry>())
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.bodyMarkdown, "A thought worth keeping.")
+        XCTAssertFalse(try context.fetch(FetchDescriptor<PendingChange>()).isEmpty)
+    }
+
+    func testAppendToTodayUpdatesExistingEntry() async throws {
+        let context = try makeContext()
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let todayEntry = DiaryEntry(
+            id: "entry-today",
+            createdAt: now,
+            updatedAt: now,
+            serverRevision: "rev-1",
+            title: "Today",
+            excerpt: "Morning",
+            bodyMarkdown: "Morning."
+        )
+        context.insert(todayEntry)
+        try context.save()
+
+        let appended = try await DiaryIntentActions.appendToToday(
+            text: "Afternoon.",
+            now: now.addingTimeInterval(3600),
+            context: context,
+            appState: makeAppState(),
+            coordinator: SyncCoordinator()
+        )
+
+        XCTAssertTrue(appended, "should append to the existing entry created today")
+        XCTAssertTrue(todayEntry.bodyMarkdown.contains("Morning."))
+        XCTAssertTrue(todayEntry.bodyMarkdown.contains("Afternoon."))
+        XCTAssertEqual(try context.fetch(FetchDescriptor<DiaryEntry>()).count, 1)
+    }
+
+    func testAppendToTodayCreatesEntryWhenNoneToday() async throws {
+        let context = try makeContext()
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        // An entry from a previous day must not be treated as today's.
+        let oldEntry = DiaryEntry(
+            id: "entry-old",
+            createdAt: now.addingTimeInterval(-2 * 86_400),
+            updatedAt: now.addingTimeInterval(-2 * 86_400),
+            serverRevision: "rev-old",
+            title: "Old",
+            excerpt: "Old",
+            bodyMarkdown: "Old."
+        )
+        context.insert(oldEntry)
+        try context.save()
+
+        let appended = try await DiaryIntentActions.appendToToday(
+            text: "Fresh start.",
+            now: now,
+            context: context,
+            appState: makeAppState(),
+            coordinator: SyncCoordinator()
+        )
+
+        XCTAssertFalse(appended, "should create a new entry when none exists for today")
+        XCTAssertEqual(try context.fetch(FetchDescriptor<DiaryEntry>()).count, 2)
+    }
+
+    func testSearchMatchesFoldedTermsAndIgnoresTombstones() async throws {
+        let context = try makeContext()
+        let base = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        func make(_ id: String, _ title: String, _ body: String, at offset: TimeInterval, tombstoned: Bool = false) {
+            let entry = DiaryEntry(
+                id: id,
+                createdAt: base.addingTimeInterval(offset),
+                updatedAt: base.addingTimeInterval(offset),
+                serverRevision: "rev-\(id)",
+                title: title,
+                excerpt: body,
+                bodyMarkdown: body
+            )
+            entry.refreshSearchText()
+            entry.isTombstoned = tombstoned
+            context.insert(entry)
+        }
+        make("a", "Beach Day", "We visited the beach with Chase.", at: 0)
+        make("b", "Rainy", "Stayed in and read.", at: 1)
+        make("c", "Old Beach", "An old beach memory.", at: 2, tombstoned: true)
+        try context.save()
+
+        let results = try DiaryIntentActions.search(query: "BEACH", context: context)
+        XCTAssertEqual(results, ["Beach Day"], "case-insensitive match, newest first, tombstones excluded")
+
+        XCTAssertTrue(try DiaryIntentActions.search(query: "   ", context: context).isEmpty)
+    }
+
+    private func makeContext() throws -> ModelContext {
+        let schema = Schema([
+            DiaryEntry.self,
+            DiaryAttachment.self,
+            SyncCheckpoint.self,
+            PendingChange.self,
+            SyncEvent.self
+        ])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        return ModelContext(try ModelContainer(for: schema, configurations: [configuration]))
+    }
+
+    private func makeAppState() -> AppState {
+        let suiteName = "DiaryIntentActionsTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return AppState(defaults: defaults, keychain: KeychainStore(service: suiteName))
+    }
+}
+
+@MainActor
 final class AppLockTests: XCTestCase {
     func testStartsLockedWhenEnabled() {
         let lock = AppLock(defaults: makeDefaults(enabled: true))

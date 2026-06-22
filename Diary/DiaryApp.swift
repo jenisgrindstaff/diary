@@ -6,23 +6,9 @@ struct DiaryApp: App {
     @State private var appState = AppState()
     @State private var appLock = AppLock()
 
-    private let containerResult: Result<ModelContainer, Error>
-
-    init() {
-        let schema = Schema([
-            DiaryEntry.self,
-            DiaryAttachment.self,
-            SyncCheckpoint.self,
-            PendingChange.self,
-            SyncEvent.self
-        ])
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-        containerResult = Result { try ModelContainer(for: schema, configurations: [configuration]) }
-    }
-
     var body: some Scene {
         WindowGroup {
-            switch containerResult {
+            switch AppModelContainer.shared {
             case .success(let container):
                 RootView()
                     .environment(appState)
@@ -36,6 +22,23 @@ struct DiaryApp: App {
             }
         }
     }
+}
+
+/// The single SwiftData container for the process, shared by the app UI and by
+/// App Intents so a Shortcut and the running app read and write the same store.
+enum AppModelContainer {
+    static let schema = Schema([
+        DiaryEntry.self,
+        DiaryAttachment.self,
+        SyncCheckpoint.self,
+        PendingChange.self,
+        SyncEvent.self
+    ])
+
+    static let shared: Result<ModelContainer, Error> = {
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        return Result { try ModelContainer(for: schema, configurations: [configuration]) }
+    }()
 }
 
 private struct StorageUnavailableView: View {
