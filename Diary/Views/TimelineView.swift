@@ -258,6 +258,11 @@ private struct NewEntryView: View {
 
                 Section("Markdown") {
                     MarkdownEditorField(text: $bodyMarkdown, minHeight: 240)
+                    #if canImport(JournalingSuggestions)
+                    JournalingMomentPicker { moment in
+                        appendMoment(moment)
+                    }
+                    #endif
                 }
 
                 Section("Media") {
@@ -374,6 +379,16 @@ private struct NewEntryView: View {
 
     private static func cleanList(_ value: String) -> [String] {
         DraftTokenPreview.cleanList(value)
+    }
+
+    private func appendMoment(_ moment: String) {
+        let trimmed = moment.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if bodyMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            bodyMarkdown = trimmed
+        } else {
+            bodyMarkdown += "\n\n" + trimmed
+        }
     }
 
     private func loadMedia(from items: [PhotosPickerItem]) async {

@@ -2,6 +2,32 @@ import Foundation
 import AVFoundation
 import SwiftUI
 import UIKit
+#if canImport(JournalingSuggestions)
+import JournalingSuggestions
+#endif
+
+#if canImport(JournalingSuggestions)
+/// Presents Apple's on-device Journaling Suggestions picker (photos, workouts,
+/// places, …) and hands the chosen moment's text back to the composer. The
+/// picker runs in a separate process and only returns what the user taps, never
+/// the raw data set.
+///
+/// Requires the Apple-gated `com.apple.developer.journal.allowed` entitlement
+/// and a physical device; the picker is empty in the Simulator.
+struct JournalingMomentPicker: View {
+    let onPick: (String) -> Void
+
+    var body: some View {
+        JournalingSuggestionsPicker {
+            Label("Add a Moment", systemImage: "sparkles")
+        } onCompletion: { suggestion in
+            let title = suggestion.title
+            guard !title.isEmpty else { return }
+            await MainActor.run { onPick(title) }
+        }
+    }
+}
+#endif
 
 struct DraftTokenPreview: View {
     let peopleText: String
