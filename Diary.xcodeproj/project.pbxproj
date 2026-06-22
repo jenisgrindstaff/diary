@@ -1,0 +1,574 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		D1A000000000000000000024 /* DiaryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A00000000000000000000F /* DiaryApp.swift */; };
+		D1A000000000000000000025 /* PreviewData.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000010 /* PreviewData.swift */; };
+		D1A000000000000000000026 /* DiaryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000011 /* DiaryEntry.swift */; };
+		D1A000000000000000000027 /* DiaryAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000012 /* DiaryAttachment.swift */; };
+		D1A000000000000000000028 /* SyncCheckpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000013 /* SyncCheckpoint.swift */; };
+		D1A000000000000000000029 /* PendingChange.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000014 /* PendingChange.swift */; };
+		D1A00000000000000000002A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000015 /* AppState.swift */; };
+		D1A00000000000000000002B /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000016 /* KeychainStore.swift */; };
+		D1A00000000000000000002C /* LocalMediaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000017 /* LocalMediaStore.swift */; };
+		D1A00000000000000000002D /* SyncClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000018 /* SyncClient.swift */; };
+		D1A00000000000000000002E /* SyncCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000019 /* SyncCoordinator.swift */; };
+		D1A00000000000000000002F /* SyncDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A00000000000000000001A /* SyncDTOs.swift */; };
+		D1A000000000000000000030 /* SyncImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A00000000000000000001B /* SyncImporter.swift */; };
+		D1A000000000000000000031 /* AttachmentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A00000000000000000001C /* AttachmentViews.swift */; };
+		D1A000000000000000000032 /* EntryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A00000000000000000001D /* EntryDetailView.swift */; };
+		D1A000000000000000000033 /* EntryRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A00000000000000000001E /* EntryRow.swift */; };
+		D1A000000000000000000034 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A00000000000000000001F /* RootView.swift */; };
+		D1A000000000000000000035 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000020 /* SearchView.swift */; };
+		D1A000000000000000000036 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000021 /* SettingsView.swift */; };
+		D1A000000000000000000037 /* TimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000022 /* TimelineView.swift */; };
+		D1A000000000000000000038 /* SyncImporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000023 /* SyncImporterTests.swift */; };
+		D1A000000000000000000039 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D1A00000000000000000000C /* Assets.xcassets */; };
+		D1A00000000000000000003A /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D1A00000000000000000000D /* Preview Assets.xcassets */; };
+		D1A000000000000000000055 /* SyncDTOTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000054 /* SyncDTOTests.swift */; };
+		D1A000000000000000000057 /* SyncEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000056 /* SyncEvent.swift */; };
+		D1A000000000000000000059 /* SyncActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000058 /* SyncActivityView.swift */; };
+		D1A00000000000000000005B /* SyncCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A00000000000000000005A /* SyncCoordinatorTests.swift */; };
+		D1A00000000000000000005D /* DraftFormViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A00000000000000000005C /* DraftFormViews.swift */; };
+		D1A00000000000000000005F /* DraftSuggestionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A00000000000000000005E /* DraftSuggestionsTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		D1A000000000000000000044 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D1A000000000000000000043 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D1A000000000000000000041;
+			remoteInfo = Diary;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		D1A00000000000000000000A /* Diary.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Diary.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D1A00000000000000000000B /* DiaryTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DiaryTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D1A00000000000000000000C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D1A00000000000000000000D /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		D1A00000000000000000000E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		D1A00000000000000000000F /* DiaryApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiaryApp.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000010 /* PreviewData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreviewData.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000011 /* DiaryEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiaryEntry.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000012 /* DiaryAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiaryAttachment.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000013 /* SyncCheckpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SyncCheckpoint.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000014 /* PendingChange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PendingChange.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000015 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000016 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeychainStore.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000017 /* LocalMediaStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LocalMediaStore.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000018 /* SyncClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SyncClient.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000019 /* SyncCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SyncCoordinator.swift"; sourceTree = "<group>"; };
+		D1A00000000000000000001A /* SyncDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SyncDTOs.swift"; sourceTree = "<group>"; };
+		D1A00000000000000000001B /* SyncImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SyncImporter.swift"; sourceTree = "<group>"; };
+		D1A00000000000000000001C /* AttachmentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AttachmentViews.swift"; sourceTree = "<group>"; };
+		D1A00000000000000000001D /* EntryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EntryDetailView.swift"; sourceTree = "<group>"; };
+		D1A00000000000000000001E /* EntryRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EntryRow.swift"; sourceTree = "<group>"; };
+		D1A00000000000000000001F /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RootView.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000020 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SearchView.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000021 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SettingsView.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000022 /* TimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TimelineView.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000023 /* SyncImporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SyncImporterTests.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000054 /* SyncDTOTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SyncDTOTests.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000056 /* SyncEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SyncEvent.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000058 /* SyncActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SyncActivityView.swift"; sourceTree = "<group>"; };
+		D1A00000000000000000005A /* SyncCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SyncCoordinatorTests.swift"; sourceTree = "<group>"; };
+		D1A00000000000000000005C /* DraftFormViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DraftFormViews.swift"; sourceTree = "<group>"; };
+		D1A00000000000000000005E /* DraftSuggestionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DraftSuggestionsTests.swift"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D1A00000000000000000003C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1A00000000000000000003F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		D1A000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				D1A000000000000000000003 /* Diary */,
+				D1A000000000000000000004 /* DiaryTests */,
+				D1A000000000000000000002 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D1A000000000000000000002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D1A00000000000000000000A /* Diary.app */,
+				D1A00000000000000000000B /* DiaryTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D1A000000000000000000003 /* Diary */ = {
+			isa = PBXGroup;
+			children = (
+				D1A00000000000000000000E /* Info.plist */,
+				D1A00000000000000000000F /* DiaryApp.swift */,
+				D1A000000000000000000010 /* PreviewData.swift */,
+				D1A00000000000000000000C /* Assets.xcassets */,
+				D1A000000000000000000005 /* Models */,
+				D1A000000000000000000006 /* State */,
+				D1A000000000000000000007 /* Sync */,
+				D1A000000000000000000008 /* Views */,
+				D1A000000000000000000009 /* Preview Content */,
+			);
+			path = Diary;
+			sourceTree = "<group>";
+		};
+		D1A000000000000000000005 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				D1A000000000000000000011 /* DiaryEntry.swift */,
+				D1A000000000000000000012 /* DiaryAttachment.swift */,
+				D1A000000000000000000013 /* SyncCheckpoint.swift */,
+				D1A000000000000000000014 /* PendingChange.swift */,
+				D1A000000000000000000056 /* SyncEvent.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		D1A000000000000000000006 /* State */ = {
+			isa = PBXGroup;
+			children = (
+				D1A000000000000000000015 /* AppState.swift */,
+			);
+			path = State;
+			sourceTree = "<group>";
+		};
+		D1A000000000000000000007 /* Sync */ = {
+			isa = PBXGroup;
+			children = (
+				D1A000000000000000000016 /* KeychainStore.swift */,
+				D1A000000000000000000017 /* LocalMediaStore.swift */,
+				D1A000000000000000000018 /* SyncClient.swift */,
+				D1A000000000000000000019 /* SyncCoordinator.swift */,
+				D1A00000000000000000001A /* SyncDTOs.swift */,
+				D1A00000000000000000001B /* SyncImporter.swift */,
+			);
+			path = Sync;
+			sourceTree = "<group>";
+		};
+		D1A000000000000000000008 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				D1A00000000000000000001C /* AttachmentViews.swift */,
+				D1A00000000000000000001D /* EntryDetailView.swift */,
+				D1A00000000000000000001E /* EntryRow.swift */,
+				D1A00000000000000000001F /* RootView.swift */,
+				D1A000000000000000000020 /* SearchView.swift */,
+				D1A000000000000000000021 /* SettingsView.swift */,
+				D1A000000000000000000058 /* SyncActivityView.swift */,
+				D1A000000000000000000022 /* TimelineView.swift */,
+				D1A00000000000000000005C /* DraftFormViews.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		D1A000000000000000000009 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				D1A00000000000000000000D /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		D1A000000000000000000004 /* DiaryTests */ = {
+			isa = PBXGroup;
+			children = (
+				D1A000000000000000000054 /* SyncDTOTests.swift */,
+				D1A00000000000000000005A /* SyncCoordinatorTests.swift */,
+				D1A00000000000000000005E /* DraftSuggestionsTests.swift */,
+				D1A000000000000000000023 /* SyncImporterTests.swift */,
+			);
+			path = DiaryTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		D1A000000000000000000041 /* Diary */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D1A00000000000000000004D /* Build configuration list for PBXNativeTarget "Diary" */;
+			buildPhases = (
+				D1A00000000000000000003B /* Sources */,
+				D1A00000000000000000003C /* Frameworks */,
+				D1A00000000000000000003D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Diary;
+			productName = Diary;
+			productReference = D1A00000000000000000000A /* Diary.app */;
+			productType = "com.apple.product-type.application";
+		};
+		D1A000000000000000000042 /* DiaryTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D1A00000000000000000004E /* Build configuration list for PBXNativeTarget "DiaryTests" */;
+			buildPhases = (
+				D1A00000000000000000003E /* Sources */,
+				D1A00000000000000000003F /* Frameworks */,
+				D1A000000000000000000040 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D1A000000000000000000045 /* PBXTargetDependency */,
+			);
+			name = DiaryTests;
+			productName = DiaryTests;
+			productReference = D1A00000000000000000000B /* DiaryTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D1A000000000000000000043 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					D1A000000000000000000041 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					D1A000000000000000000042 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = D1A000000000000000000041;
+					};
+				};
+			};
+			buildConfigurationList = D1A00000000000000000004C /* Build configuration list for PBXProject "Diary" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = D1A000000000000000000001;
+			productRefGroup = D1A000000000000000000002 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D1A000000000000000000041 /* Diary */,
+				D1A000000000000000000042 /* DiaryTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D1A00000000000000000003D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1A000000000000000000039 /* Assets.xcassets in Resources */,
+				D1A00000000000000000003A /* Preview Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1A000000000000000000040 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D1A00000000000000000003B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1A000000000000000000024 /* DiaryApp.swift in Sources */,
+				D1A000000000000000000025 /* PreviewData.swift in Sources */,
+				D1A000000000000000000026 /* DiaryEntry.swift in Sources */,
+				D1A000000000000000000027 /* DiaryAttachment.swift in Sources */,
+				D1A000000000000000000028 /* SyncCheckpoint.swift in Sources */,
+				D1A000000000000000000029 /* PendingChange.swift in Sources */,
+				D1A00000000000000000002A /* AppState.swift in Sources */,
+				D1A00000000000000000002B /* KeychainStore.swift in Sources */,
+				D1A00000000000000000002C /* LocalMediaStore.swift in Sources */,
+				D1A00000000000000000002D /* SyncClient.swift in Sources */,
+				D1A00000000000000000002E /* SyncCoordinator.swift in Sources */,
+				D1A00000000000000000002F /* SyncDTOs.swift in Sources */,
+				D1A000000000000000000030 /* SyncImporter.swift in Sources */,
+				D1A000000000000000000057 /* SyncEvent.swift in Sources */,
+				D1A000000000000000000031 /* AttachmentViews.swift in Sources */,
+				D1A000000000000000000032 /* EntryDetailView.swift in Sources */,
+				D1A000000000000000000033 /* EntryRow.swift in Sources */,
+				D1A000000000000000000034 /* RootView.swift in Sources */,
+				D1A000000000000000000035 /* SearchView.swift in Sources */,
+				D1A000000000000000000036 /* SettingsView.swift in Sources */,
+				D1A000000000000000000059 /* SyncActivityView.swift in Sources */,
+				D1A000000000000000000037 /* TimelineView.swift in Sources */,
+				D1A00000000000000000005D /* DraftFormViews.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1A00000000000000000003E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1A000000000000000000055 /* SyncDTOTests.swift in Sources */,
+				D1A00000000000000000005B /* SyncCoordinatorTests.swift in Sources */,
+				D1A00000000000000000005F /* DraftSuggestionsTests.swift in Sources */,
+				D1A000000000000000000038 /* SyncImporterTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D1A000000000000000000045 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = D1A000000000000000000041 /* Diary */; targetProxy = D1A000000000000000000044 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		D1A000000000000000000046 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		D1A000000000000000000047 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		D1A000000000000000000048 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LXS936F7D;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Diary/Info.plist;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = grindstaff.us.Diary;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		D1A000000000000000000049 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LXS936F7D;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Diary/Info.plist;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = grindstaff.us.Diary;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		D1A00000000000000000004A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LXS936F7D;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = grindstaff.us.DiaryTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Diary.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Diary";
+			};
+			name = Debug;
+		};
+		D1A00000000000000000004B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LXS936F7D;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = grindstaff.us.DiaryTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Diary.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Diary";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		D1A00000000000000000004C /* Build configuration list for PBXProject "Diary" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1A000000000000000000046 /* Debug */,
+				D1A000000000000000000047 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D1A00000000000000000004D /* Build configuration list for PBXNativeTarget "Diary" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1A000000000000000000048 /* Debug */,
+				D1A000000000000000000049 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D1A00000000000000000004E /* Build configuration list for PBXNativeTarget "DiaryTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1A00000000000000000004A /* Debug */,
+				D1A00000000000000000004B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = D1A000000000000000000043 /* Project object */;
+}

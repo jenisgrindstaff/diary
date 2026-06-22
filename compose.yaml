@@ -1,0 +1,20 @@
+services:
+  diary:
+    build:
+      context: ./server
+    environment:
+      DIARY_ADDR: ":8080"
+      DIARY_VAULT_DIR: /vault
+      DIARY_IMPORT_DIR: /imports
+      DIARY_DATA_DIR: /data
+      DIARY_API_TOKEN: ${DIARY_API_TOKEN:-change-me-before-public-use}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./vault:/vault
+      - ./imports:/imports:ro
+      - diary-data:/data
+    restart: unless-stopped
+
+volumes:
+  diary-data:
