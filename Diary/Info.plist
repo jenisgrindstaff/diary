@@ -25,6 +25,8 @@
 		<key>NSAllowsArbitraryLoadsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Diary uses Face ID to keep your journal entries private.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchScreen</key>

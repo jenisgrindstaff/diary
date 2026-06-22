@@ -4,6 +4,7 @@ import SwiftData
 @main
 struct DiaryApp: App {
     @State private var appState = AppState()
+    @State private var appLock = AppLock()
 
     private let containerResult: Result<ModelContainer, Error>
 
@@ -25,6 +26,7 @@ struct DiaryApp: App {
             case .success(let container):
                 RootView()
                     .environment(appState)
+                    .environment(appLock)
                     .modelContainer(container)
             case .failure(let error):
                 // The on-disk store could not be opened (e.g. a failed

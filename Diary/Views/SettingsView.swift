@@ -5,6 +5,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
+    @Environment(AppLock.self) private var appLock
     @Query(sort: \PendingChange.createdAt, order: .forward) private var pendingChanges: [PendingChange]
 
     @State private var syncCoordinator = SyncCoordinator()
@@ -12,9 +13,20 @@ struct SettingsView: View {
 
     var body: some View {
         @Bindable var appState = appState
+        @Bindable var appLock = appLock
 
         NavigationStack {
             Form {
+                Section {
+                    Toggle(isOn: $appLock.isEnabled) {
+                        Label(appLock.settingsLabel, systemImage: "lock.shield")
+                    }
+                } header: {
+                    Text("Privacy")
+                } footer: {
+                    Text("Require authentication to open the app. Your entries stay locked when Diary is in the background.")
+                }
+
                 Section("Server") {
                     TextField("https://diary.example.com", text: $appState.serverURLString)
                         .textInputAutocapitalization(.never)
@@ -270,5 +282,6 @@ private enum ServerHealthError: LocalizedError {
 #Preview {
     SettingsView()
         .environment(AppState())
+        .environment(AppLock())
         .modelContainer(PreviewData.container)
 }

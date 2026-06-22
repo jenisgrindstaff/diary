@@ -1,4 +1,5 @@
 import Foundation
+import LocalAuthentication
 import Observation
 #if os(iOS)
 import UIKit
@@ -115,6 +116,96 @@ final class AppState {
     }
 }
 
+/// Controls the optional Face ID / Touch ID / passcode lock that gates access
+/// to the offline diary cache. The enabled flag is persisted; the locked state
+/// is transient and re-engaged whenever the app leaves the foreground.
+@MainActor
+@Observable
+final class AppLock {
+    /// Whether the lock feature is turned on (persisted across launches).
+    var isEnabled: Bool {
+        didSet {
+            guard isEnabled != oldValue else { return }
+            defaults.set(isEnabled, forKey: DefaultsKey.appLockEnabled)
+            // Turning the lock off must release any active lock immediately.
+            // Turning it on engages from the next background/launch rather than
+            // interrupting the current session.
+            if !isEnabled {
+                isLocked = false
+                lastError = nil
+            }
+        }
+    }
+
+    /// Whether the app is currently locked and its contents must be hidden.
+    private(set) var isLocked: Bool
+    private(set) var lastError: String?
+    private var isAuthenticating = false
+
+    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let contextProvider: () -> LAContext
+
+    init(defaults: UserDefaults = .standard, contextProvider: @escaping () -> LAContext = { LAContext() }) {
+        self.defaults = defaults
+        self.contextProvider = contextProvider
+        let enabled = defaults.bool(forKey: DefaultsKey.appLockEnabled)
+        self.isEnabled = enabled
+        // Start locked when the feature is on so content never flashes before
+        // the first authentication.
+        self.isLocked = enabled
+    }
+
+    /// Re-engages the lock when the app leaves the foreground.
+    func lock() {
+        if isEnabled {
+            isLocked = true
+        }
+    }
+
+    /// Prompts for biometrics (with automatic passcode fallback) and unlocks on
+    /// success. A no-op if already unlocked or a prompt is in flight.
+    func authenticate(reason: String = "Unlock your diary") async {
+        guard isLocked, !isAuthenticating else { return }
+        isAuthenticating = true
+        defer { isAuthenticating = false }
+
+        let context = contextProvider()
+        context.localizedFallbackTitle = "Enter Passcode"
+        do {
+            let success = try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
+            if success {
+                isLocked = false
+                lastError = nil
+            }
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// The enrolled biometry type, used to label the unlock affordance.
+    var biometryType: LABiometryType {
+        let context = contextProvider()
+        _ = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+        return context.biometryType
+    }
+
+    var unlockSymbolName: String {
+        switch biometryType {
+        case .faceID: return "faceid"
+        case .touchID: return "touchid"
+        default: return "lock.open"
+        }
+    }
+
+    var settingsLabel: String {
+        switch biometryType {
+        case .faceID: return "Require Face ID"
+        case .touchID: return "Require Touch ID"
+        default: return "Require Passcode"
+        }
+    }
+}
+
 enum SyncStatus: Equatable {
     case idle
     case syncing
@@ -154,6 +245,7 @@ private enum DefaultsKey {
     static let deviceID = "deviceID"
     static let registeredAt = "registeredAt"
     static let registeredDeviceName = "registeredDeviceName"
+    static let appLockEnabled = "appLockEnabled"
 }
 
 private enum UIDeviceIdentifier {

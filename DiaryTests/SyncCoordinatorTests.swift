@@ -292,3 +292,58 @@ final class SyncCoordinatorTests: XCTestCase {
         )
     }
 }
+
+@MainActor
+final class AppLockTests: XCTestCase {
+    func testStartsLockedWhenEnabled() {
+        let lock = AppLock(defaults: makeDefaults(enabled: true))
+        XCTAssertTrue(lock.isEnabled)
+        XCTAssertTrue(lock.isLocked, "an enabled lock should start locked so content never flashes before auth")
+    }
+
+    func testStartsUnlockedWhenDisabled() {
+        let lock = AppLock(defaults: makeDefaults(enabled: false))
+        XCTAssertFalse(lock.isEnabled)
+        XCTAssertFalse(lock.isLocked)
+    }
+
+    func testEnablingDoesNotInterruptSessionButLocksOnBackground() {
+        let lock = AppLock(defaults: makeDefaults(enabled: false))
+        lock.isEnabled = true
+        XCTAssertFalse(lock.isLocked, "enabling should not lock the active foreground session")
+
+        lock.lock() // simulate moving to the background
+        XCTAssertTrue(lock.isLocked)
+    }
+
+    func testDisablingUnlocksImmediately() {
+        let lock = AppLock(defaults: makeDefaults(enabled: true))
+        XCTAssertTrue(lock.isLocked)
+
+        lock.isEnabled = false
+        XCTAssertFalse(lock.isLocked)
+    }
+
+    func testLockIsNoOpWhenDisabled() {
+        let lock = AppLock(defaults: makeDefaults(enabled: false))
+        lock.lock()
+        XCTAssertFalse(lock.isLocked)
+    }
+
+    func testEnabledStatePersistsAcrossLaunches() {
+        let defaults = makeDefaults(enabled: false)
+        AppLock(defaults: defaults).isEnabled = true
+
+        let relaunched = AppLock(defaults: defaults)
+        XCTAssertTrue(relaunched.isEnabled)
+        XCTAssertTrue(relaunched.isLocked)
+    }
+
+    private func makeDefaults(enabled: Bool) -> UserDefaults {
+        let suiteName = "AppLockTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults.set(enabled, forKey: "appLockEnabled")
+        return defaults
+    }
+}
