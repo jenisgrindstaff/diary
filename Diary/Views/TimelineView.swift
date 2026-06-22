@@ -1,5 +1,6 @@
 import CoreTransferable
 import Foundation
+import Observation
 import PhotosUI
 import SwiftData
 import SwiftUI
@@ -8,29 +9,24 @@ import UniformTypeIdentifiers
 struct TimelineView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
-    @Query(
-        filter: #Predicate<DiaryEntry> { $0.isTombstoned == false },
-        sort: \DiaryEntry.createdAt,
-        order: .reverse
-    )
-    private var entries: [DiaryEntry]
     @Query(sort: \PendingChange.createdAt, order: .forward) private var pendingChanges: [PendingChange]
 
     @State private var syncCoordinator = SyncCoordinator()
-    @State private var isPresentingNewEntry = false
+    @State private var timelinePager = TimelinePager()
+    @State private var composerMode: EntryComposerMode?
 
     private var pendingByEntryID: [String: PendingChange] {
         Dictionary(pendingChanges.map { ($0.entryID, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     private var sections: [TimelineSection] {
-        TimelineSection.group(entries)
+        TimelineSection.group(timelinePager.loadedEntries)
     }
 
     var body: some View {
         NavigationStack {
             Group {
-                if entries.isEmpty {
+                if timelinePager.loadedEntries.isEmpty && !timelinePager.isLoadingPage {
                     ContentUnavailableView(
                         "No Entries",
                         systemImage: "book.closed",
@@ -45,15 +41,31 @@ struct TimelineView: View {
                                         EntryRow(entry: entry, pendingChange: pendingByEntryID[entry.id])
                                     }
                                     .listRowInsets(EdgeInsets(top: 10, leading: 18, bottom: 10, trailing: 18))
+                                    .onAppear {
+                                        loadMoreIfNeeded(entry)
+                                    }
                                 }
                             } header: {
                                 TimelineSectionHeader(section: section)
                             }
                         }
+
+                        if timelinePager.hasMore {
+                            ProgressView()
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .listRowSeparator(.hidden)
+                                .onAppear {
+                                    Task {
+                                        await timelinePager.loadNextPage(modelContext: modelContext)
+                                    }
+                                }
+                        }
                     }
                     .listStyle(.plain)
                     .refreshable {
                         await syncCoordinator.sync(modelContext: modelContext, appState: appState)
+                        await timelinePager.reload(modelContext: modelContext)
+                        DiaryWidgetPublisher.refresh(modelContext: modelContext)
                     }
                 }
             }
@@ -61,25 +73,43 @@ struct TimelineView: View {
             .navigationDestination(for: String.self) { entryID in
                 EntryDetailResolver(entryID: entryID)
             }
-            .sheet(isPresented: $isPresentingNewEntry) {
-                NewEntryView(syncCoordinator: syncCoordinator)
+            .sheet(item: $composerMode, onDismiss: {
+                Task {
+                    await timelinePager.reload(modelContext: modelContext)
+                    DiaryWidgetPublisher.refresh(modelContext: modelContext)
+                }
+            }) { mode in
+                switch mode {
+                case .quick:
+                    QuickAppendView(syncCoordinator: syncCoordinator)
+                case .full:
+                    NewEntryView(syncCoordinator: syncCoordinator)
+                }
             }
             .task {
+                await timelinePager.reload(modelContext: modelContext)
                 presentNewEntryIfRequested()
-                DiaryWidgetPublisher.refresh(modelContext: modelContext)
-            }
-            .onChange(of: entries.count) {
                 DiaryWidgetPublisher.refresh(modelContext: modelContext)
             }
             .onChange(of: appState.pendingNewEntry) {
                 presentNewEntryIfRequested()
             }
+            .onChange(of: appState.pendingQuickEntry) {
+                presentNewEntryIfRequested()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("New Entry", systemImage: "square.and.pencil") {
-                        isPresentingNewEntry = true
+                    Button("Add Today", systemImage: "text.badge.plus") {
+                        composerMode = .quick
                     }
-                    .accessibilityHint("Creates a diary entry on the Markdown diary server.")
+                    .accessibilityHint("Quickly appends text to today's diary entry.")
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Full Entry", systemImage: "square.and.pencil") {
+                        composerMode = .full
+                    }
+                    .accessibilityHint("Creates a diary entry with date, metadata, and media.")
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
@@ -101,9 +131,70 @@ struct TimelineView: View {
     }
 
     private func presentNewEntryIfRequested() {
+        if appState.pendingQuickEntry {
+            appState.pendingQuickEntry = false
+            composerMode = .quick
+            return
+        }
+
         guard appState.pendingNewEntry else { return }
         appState.pendingNewEntry = false
-        isPresentingNewEntry = true
+        composerMode = .full
+    }
+
+    private func loadMoreIfNeeded(_ entry: DiaryEntry) {
+        guard timelinePager.shouldLoadMore(afterAppearing: entry) else { return }
+        Task {
+            await timelinePager.loadNextPage(modelContext: modelContext)
+        }
+    }
+}
+
+private enum EntryComposerMode: String, Identifiable {
+    case quick
+    case full
+
+    var id: String { rawValue }
+}
+
+@MainActor
+@Observable
+private final class TimelinePager {
+    private let pageSize = 80
+
+    private(set) var loadedEntries: [DiaryEntry] = []
+    private(set) var hasMore = true
+    private(set) var isLoadingPage = false
+
+    func reload(modelContext: ModelContext) async {
+        loadedEntries = []
+        hasMore = true
+        await loadNextPage(modelContext: modelContext)
+    }
+
+    func loadNextPage(modelContext: ModelContext) async {
+        guard hasMore, !isLoadingPage else { return }
+        isLoadingPage = true
+        defer { isLoadingPage = false }
+
+        do {
+            var descriptor = FetchDescriptor<DiaryEntry>(
+                predicate: #Predicate { !$0.isTombstoned },
+                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            )
+            descriptor.fetchLimit = pageSize
+            descriptor.fetchOffset = loadedEntries.count
+
+            let page = try modelContext.fetch(descriptor)
+            loadedEntries.append(contentsOf: page)
+            hasMore = page.count == pageSize
+        } catch {
+            hasMore = false
+        }
+    }
+
+    func shouldLoadMore(afterAppearing entry: DiaryEntry) -> Bool {
+        hasMore && loadedEntries.last?.id == entry.id
     }
 }
 
@@ -163,16 +254,111 @@ private struct TimelineSectionHeader: View {
     }
 }
 
+private struct QuickAppendView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Environment(AppState.self) private var appState
+
+    let syncCoordinator: SyncCoordinator
+
+    @State private var text = ""
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @FocusState private var isTextFocused: Bool
+
+    private var canSave: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSaving
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextEditor(text: $text)
+                        .frame(minHeight: 180)
+                        .textInputAutocapitalization(.sentences)
+                        .focused($isTextFocused)
+                        .overlay(alignment: .topLeading) {
+                            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text("Add to today...")
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.top, 8)
+                                    .padding(.leading, 5)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                }
+
+                Section {
+                    Label("Saves locally first, then syncs when the server is reachable.", systemImage: "checkmark.arrow.trianglehead.counterclockwise")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Add Today")
+            .navigationBarTitleDisplayMode(.inline)
+            .defaultFocus($isTextFocused, true)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(isSaving)
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        Task {
+                            await save()
+                        }
+                    }
+                    .disabled(!canSave)
+                }
+            }
+            .alert("Entry Not Saved", isPresented: errorBinding) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(errorMessage ?? "The entry could not be saved.")
+            }
+        }
+    }
+
+    private var errorBinding: Binding<Bool> {
+        Binding {
+            errorMessage != nil
+        } set: { isPresented in
+            if !isPresented {
+                errorMessage = nil
+            }
+        }
+    }
+
+    private func save() async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            _ = try await DiaryIntentActions.appendToToday(
+                text: trimmed,
+                context: modelContext,
+                appState: appState,
+                coordinator: syncCoordinator
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
 private struct NewEntryView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
-    @Query(
-        filter: #Predicate<DiaryEntry> { $0.isTombstoned == false },
-        sort: \DiaryEntry.updatedAt,
-        order: .reverse
-    )
-    private var suggestionEntries: [DiaryEntry]
+    @Query(sort: \DiarySuggestion.count, order: .reverse) private var suggestions: [DiarySuggestion]
 
     let syncCoordinator: SyncCoordinator
 
@@ -227,7 +413,7 @@ private struct NewEntryView: View {
     }
 
     private var draftSuggestions: DraftSuggestions {
-        DraftSuggestions(entries: suggestionEntries)
+        DraftSuggestions(suggestions: suggestions)
     }
 
     var body: some View {

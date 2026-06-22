@@ -74,6 +74,7 @@ enum SyncImporter {
             }
         }
 
+        try DiarySuggestionIndex.rebuild(modelContext: modelContext)
         checkpoint.cursor = envelope.nextCursor ?? checkpoint.cursor
         checkpoint.lastSuccessfulSyncAt = syncedAt
         try modelContext.save()

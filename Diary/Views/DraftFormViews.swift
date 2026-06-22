@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import ImageIO
 import SwiftUI
 import UIKit
 #if canImport(JournalingSuggestions)
@@ -133,6 +134,17 @@ struct DraftSuggestions: Equatable {
         self.tags = tags
     }
 
+    init(suggestions: [DiarySuggestion], limit: Int = 8) {
+        people = Self.rankedIndexedSuggestions(
+            suggestions.filter { $0.kind == "people" },
+            limit: limit
+        )
+        tags = Self.rankedIndexedSuggestions(
+            suggestions.filter { $0.kind == "tags" },
+            limit: limit
+        )
+    }
+
     init(entries: [DiaryEntry], limit: Int = 8) {
         let activeEntries = entries.filter { !$0.isTombstoned }
         people = Self.rankedSuggestions(
@@ -183,6 +195,23 @@ struct DraftSuggestions: Equatable {
             }
             .prefix(limit)
             .map { DraftSuggestion(title: $0.title, values: [$0.title]) }
+    }
+
+    private static func rankedIndexedSuggestions(_ suggestions: [DiarySuggestion], limit: Int) -> [DraftSuggestion] {
+        suggestions
+            .sorted { lhs, rhs in
+                if lhs.count != rhs.count {
+                    return lhs.count > rhs.count
+                }
+
+                if lhs.latestDate != rhs.latestDate {
+                    return lhs.latestDate > rhs.latestDate
+                }
+
+                return lhs.value.localizedStandardCompare(rhs.value) == .orderedAscending
+            }
+            .prefix(limit)
+            .map { DraftSuggestion(title: $0.value, values: [$0.value]) }
     }
 }
 
@@ -455,10 +484,7 @@ private enum ThumbnailLoader {
     static func thumbnail(for item: MediaUploadDraft) async -> UIImage? {
         await Task.detached(priority: .utility) {
             if item.contentType.hasPrefix("image/") {
-                guard let data = try? Data(contentsOf: item.fileURL) else {
-                    return nil
-                }
-                return UIImage(data: data)
+                return downsampledImage(at: item.fileURL, maxPixelSize: 480)
             }
 
             if item.contentType.hasPrefix("video/") {
@@ -475,5 +501,26 @@ private enum ThumbnailLoader {
 
             return nil
         }.value
+    }
+
+    private static func downsampledImage(at url: URL, maxPixelSize: CGFloat) -> UIImage? {
+        let sourceOptions: [CFString: Any] = [
+            kCGImageSourceShouldCache: false
+        ]
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, sourceOptions as CFDictionary) else {
+            return nil
+        }
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+
+        return UIImage(cgImage: image)
     }
 }

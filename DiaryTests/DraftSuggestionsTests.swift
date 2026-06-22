@@ -1,8 +1,24 @@
+import SwiftData
 import XCTest
 @testable import Diary
 
 @MainActor
 final class DraftSuggestionsTests: XCTestCase {
+    func testSuggestionIndexRanksByFrequencyThenRecency() throws {
+        let context = try makeContext()
+        context.insert(entry(id: "1", updatedAt: Date(timeIntervalSinceReferenceDate: 700_000_000), people: ["Charlotte"], tags: ["family", "school"]))
+        context.insert(entry(id: "2", updatedAt: Date(timeIntervalSinceReferenceDate: 800_000_000), people: ["Charlotte", "Chase"], tags: ["family", "funny"]))
+        context.insert(entry(id: "3", updatedAt: Date(timeIntervalSinceReferenceDate: 801_000_000), people: ["Chase"], tags: ["milestone"]))
+        try DiarySuggestionIndex.rebuild(modelContext: context)
+        try context.save()
+
+        let indexed = try context.fetch(FetchDescriptor<DiarySuggestion>())
+        let suggestions = DraftSuggestions(suggestions: indexed, limit: 3)
+
+        XCTAssertEqual(suggestions.people.map(\.title), ["Chase", "Charlotte"])
+        XCTAssertEqual(suggestions.tags.map(\.title), ["family", "milestone", "funny"])
+    }
+
     func testSuggestionsRankByFrequencyThenRecency() {
         let older = Date(timeIntervalSinceReferenceDate: 700_000_000)
         let newer = Date(timeIntervalSinceReferenceDate: 800_000_000)
@@ -57,5 +73,18 @@ final class DraftSuggestionsTests: XCTestCase {
             people: people,
             isTombstoned: isTombstoned
         )
+    }
+
+    private func makeContext() throws -> ModelContext {
+        let schema = Schema([
+            DiaryEntry.self,
+            DiaryAttachment.self,
+            DiarySuggestion.self,
+            SyncCheckpoint.self,
+            PendingChange.self,
+            SyncEvent.self
+        ])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        return ModelContext(try ModelContainer(for: schema, configurations: [configuration]))
     }
 }

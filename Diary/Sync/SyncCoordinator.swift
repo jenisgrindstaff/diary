@@ -231,6 +231,7 @@ final class SyncCoordinator {
 
         modelContext.delete(change)
         try resetSyncCursor(modelContext: modelContext)
+        try DiarySuggestionIndex.rebuild(modelContext: modelContext)
         try modelContext.save()
 
         recordEvent(
@@ -292,6 +293,7 @@ final class SyncCoordinator {
             draft: payload.draft,
             removedAttachmentIDs: payload.removedAttachmentIDs
         )
+        try DiarySuggestionIndex.rebuild(modelContext: modelContext)
         try modelContext.save()
 
         try await tryFlushPendingChanges(
@@ -369,6 +371,7 @@ final class SyncCoordinator {
         )
         modelContext.insert(change)
         modelContext.insert(localEntry(id: localEntryID, draft: draft, changeID: changeID))
+        try DiarySuggestionIndex.rebuild(modelContext: modelContext)
         try modelContext.save()
         recordEvent(
             kind: .createEntry,
@@ -405,6 +408,7 @@ final class SyncCoordinator {
             applyOptimisticUpdate(entry: entry, draft: draft, removedAttachmentIDs: removedAttachmentIDs)
         }
 
+        try DiarySuggestionIndex.rebuild(modelContext: modelContext)
         try modelContext.save()
         recordEvent(
             kind: .updateEntry,
@@ -431,6 +435,7 @@ final class SyncCoordinator {
             entry.updatedAt = .now
         }
 
+        try DiarySuggestionIndex.rebuild(modelContext: modelContext)
         try modelContext.save()
         recordEvent(
             kind: .deleteEntry,
@@ -506,6 +511,7 @@ final class SyncCoordinator {
 
         cleanup(media: payload.media)
         modelContext.delete(change)
+        try DiarySuggestionIndex.rebuild(modelContext: modelContext)
         try modelContext.save()
         recordEvent(
             kind: .createEntry,
@@ -544,6 +550,7 @@ final class SyncCoordinator {
 
         cleanup(media: payload.media)
         modelContext.delete(change)
+        try DiarySuggestionIndex.rebuild(modelContext: modelContext)
         try modelContext.save()
         recordEvent(
             kind: .updateEntry,
@@ -588,6 +595,7 @@ final class SyncCoordinator {
         purgeLocalMedia(forEntryID: response.deletedEntryID, modelContext: modelContext)
 
         modelContext.delete(change)
+        try DiarySuggestionIndex.rebuild(modelContext: modelContext)
         try modelContext.save()
         recordEvent(
             kind: .deleteEntry,
@@ -614,6 +622,7 @@ final class SyncCoordinator {
             modelContext.delete(entry)
         }
 
+        try DiarySuggestionIndex.rebuild(modelContext: modelContext)
         try modelContext.save()
         recordEvent(
             kind: .deleteEntry,
@@ -632,6 +641,7 @@ final class SyncCoordinator {
         }
 
         modelContext.delete(change)
+        try DiarySuggestionIndex.rebuild(modelContext: modelContext)
         try modelContext.save()
         recordEvent(
             kind: .deleteEntry,

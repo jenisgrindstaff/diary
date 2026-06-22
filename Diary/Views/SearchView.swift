@@ -5,18 +5,15 @@ struct SearchView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
 
-    @Query(
-        filter: #Predicate<DiaryEntry> { $0.isTombstoned == false },
-        sort: \DiaryEntry.createdAt,
-        order: .reverse
-    )
-    private var entries: [DiaryEntry]
     @Query(sort: \PendingChange.createdAt, order: .forward) private var pendingChanges: [PendingChange]
 
     @State private var syncCoordinator = SyncCoordinator()
+    @State private var localEntries: [DiaryEntry] = []
     @State private var searchText = ""
     @State private var serverSearchState = ServerSearchState.idle
     @State private var serverSnippetsByEntryID: [String: String] = [:]
+
+    private let localSearchLimit = 500
 
     private var pendingByEntryID: [String: PendingChange] {
         Dictionary(pendingChanges.map { ($0.entryID, $0) }, uniquingKeysWith: { first, _ in first })
@@ -24,10 +21,10 @@ struct SearchView: View {
 
     private var results: [DiaryEntry] {
         guard !searchTerms.isEmpty else {
-            return entries
+            return localEntries
         }
 
-        return entries.filter { entry in
+        return localEntries.filter { entry in
             searchTerms.allSatisfy { entry.searchTextStorage.contains($0) }
         }
     }
@@ -49,7 +46,7 @@ struct SearchView: View {
                 if !trimmedSearchText.isEmpty && !results.isEmpty {
                     SearchControlRow(
                         localResultCount: results.count,
-                        totalCount: entries.count,
+                        totalCount: localEntries.count,
                         state: serverSearchState,
                         isDisabled: syncCoordinator.isSyncing
                     ) {
@@ -60,7 +57,7 @@ struct SearchView: View {
                 } else if !trimmedSearchText.isEmpty {
                     SearchControlRow(
                         localResultCount: 0,
-                        totalCount: entries.count,
+                        totalCount: localEntries.count,
                         state: serverSearchState,
                         isDisabled: syncCoordinator.isSyncing
                     ) {
@@ -83,7 +80,7 @@ struct SearchView: View {
             }
             .listStyle(.plain)
             .overlay {
-                if entries.isEmpty && trimmedSearchText.isEmpty {
+                if localEntries.isEmpty && trimmedSearchText.isEmpty {
                     ContentUnavailableView(
                         "No Entries",
                         systemImage: "book.closed",
@@ -99,6 +96,9 @@ struct SearchView: View {
             }
             .searchable(text: $searchText, prompt: "Entries, tags, people")
             .searchToolbarBehavior(.minimize)
+            .task {
+                loadLocalEntries()
+            }
             .onChange(of: trimmedSearchText) { _, _ in
                 serverSearchState = .idle
                 serverSnippetsByEntryID = [:]
@@ -121,8 +121,22 @@ struct SearchView: View {
             )
             serverSnippetsByEntryID = summary.snippetsByEntryID
             serverSearchState = .completed(summary.resultCount)
+            loadLocalEntries()
         } catch {
             serverSearchState = .failed(error.localizedDescription)
+        }
+    }
+
+    private func loadLocalEntries() {
+        do {
+            var descriptor = FetchDescriptor<DiaryEntry>(
+                predicate: #Predicate { !$0.isTombstoned },
+                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            )
+            descriptor.fetchLimit = localSearchLimit
+            localEntries = try modelContext.fetch(descriptor)
+        } catch {
+            localEntries = []
         }
     }
 }

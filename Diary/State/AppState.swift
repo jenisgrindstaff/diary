@@ -21,6 +21,7 @@ final class AppState {
     /// Set when a widget / Shortcut deep link asks to open the new-entry
     /// composer. Transient; the timeline consumes and clears it.
     var pendingNewEntry = false
+    var pendingQuickEntry = false
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let keychain: KeychainStore

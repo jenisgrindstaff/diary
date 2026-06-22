@@ -90,10 +90,13 @@ enum DiaryIntentActions {
             .map(String.init)
         guard !terms.isEmpty else { return [] }
 
-        let entries = try context.fetch(FetchDescriptor<DiaryEntry>(
+        var descriptor = FetchDescriptor<DiaryEntry>(
             predicate: #Predicate { !$0.isTombstoned },
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-        ))
+        )
+        descriptor.fetchLimit = max(limit * 50, limit)
+
+        let entries = try context.fetch(descriptor)
         return entries
             .filter { entry in terms.allSatisfy { entry.searchTextStorage.contains($0) } }
             .prefix(limit)

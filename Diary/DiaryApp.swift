@@ -15,8 +15,12 @@ struct DiaryApp: App {
                     .environment(appLock)
                     .modelContainer(container)
                     .onOpenURL { url in
-                        // diary://new — opened from the widget / Lock Screen.
-                        if url.scheme == "diary", url.host == "new" {
+                        guard url.scheme == "diary" else { return }
+                        // diary://today and legacy diary://new open the fast
+                        // append sheet used by the widget / Lock Screen.
+                        if url.host == "today" || url.host == "new" {
+                            appState.pendingQuickEntry = true
+                        } else if url.host == "full" {
                             appState.pendingNewEntry = true
                         }
                     }
@@ -36,6 +40,7 @@ enum AppModelContainer {
     static let schema = Schema([
         DiaryEntry.self,
         DiaryAttachment.self,
+        DiarySuggestion.self,
         SyncCheckpoint.self,
         PendingChange.self,
         SyncEvent.self

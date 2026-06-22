@@ -38,7 +38,7 @@ struct DiaryStreakWidget: Widget {
         StaticConfiguration(kind: kind, provider: DiaryTimelineProvider()) { entry in
             DiaryWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
-                .widgetURL(URL(string: "diary://new"))
+                .widgetURL(URL(string: "diary://today"))
         }
         .configurationDisplayName("Journal Streak")
         .description("Your writing streak with a quick way to add today's entry.")

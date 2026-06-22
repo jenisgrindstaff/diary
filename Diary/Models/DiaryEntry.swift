@@ -183,3 +183,97 @@ struct DiarySubjectDetail: Codable, Hashable, Sendable {
         [name, label, ageText, rawText].joined(separator: "|")
     }
 }
+
+@Model
+final class DiarySuggestion {
+    @Attribute(.unique) var id: String
+    var kind: String
+    var value: String
+    var normalizedValue: String
+    var count: Int
+    var latestDate: Date
+
+    init(kind: String, value: String, normalizedValue: String, count: Int, latestDate: Date) {
+        self.id = "\(kind):\(normalizedValue)"
+        self.kind = kind
+        self.value = value
+        self.normalizedValue = normalizedValue
+        self.count = count
+        self.latestDate = latestDate
+    }
+}
+
+enum DiarySuggestionIndex {
+    static func rebuild(modelContext: ModelContext) throws {
+        for suggestion in try modelContext.fetch(FetchDescriptor<DiarySuggestion>()) {
+            modelContext.delete(suggestion)
+        }
+
+        let descriptor = FetchDescriptor<DiaryEntry>(
+            predicate: #Predicate { !$0.isTombstoned },
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+        )
+        let entries = try modelContext.fetch(descriptor)
+        var scores: [String: SuggestionIndexScore] = [:]
+
+        for entry in entries {
+            collect(values: entry.people, kind: "people", entry: entry, scores: &scores)
+            collect(values: entry.tags, kind: "tags", entry: entry, scores: &scores)
+        }
+
+        for score in scores.values {
+            modelContext.insert(DiarySuggestion(
+                kind: score.kind,
+                value: score.value,
+                normalizedValue: score.normalizedValue,
+                count: score.count,
+                latestDate: score.latestDate
+            ))
+        }
+    }
+
+    private static func collect(
+        values: [String],
+        kind: String,
+        entry: DiaryEntry,
+        scores: inout [String: SuggestionIndexScore]
+    ) {
+        for rawValue in values {
+            let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { continue }
+
+            let normalized = normalize(value)
+            let key = "\(kind):\(normalized)"
+            if var score = scores[key] {
+                score.count += 1
+                if entry.updatedAt > score.latestDate {
+                    score.latestDate = entry.updatedAt
+                    score.value = value
+                }
+                scores[key] = score
+            } else {
+                scores[key] = SuggestionIndexScore(
+                    kind: kind,
+                    value: value,
+                    normalizedValue: normalized,
+                    count: 1,
+                    latestDate: entry.updatedAt
+                )
+            }
+        }
+    }
+
+    private static func normalize(_ value: String) -> String {
+        value
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+    }
+}
+
+private struct SuggestionIndexScore {
+    var kind: String
+    var value: String
+    var normalizedValue: String
+    var count: Int
+    var latestDate: Date
+}

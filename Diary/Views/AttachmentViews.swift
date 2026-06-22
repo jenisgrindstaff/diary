@@ -1,5 +1,7 @@
+import AVFoundation
 import AVKit
 import SwiftUI
+import UIKit
 
 struct AttachmentGridView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -51,6 +53,8 @@ private struct AttachmentTile: View {
     let attachment: DiaryAttachment
     let mediaStore: LocalMediaStore
 
+    @State private var isPlayingVideo = false
+
     var body: some View {
         Group {
             if attachment.isImage, let url = localURL {
@@ -69,8 +73,18 @@ private struct AttachmentTile: View {
                     }
                 }
             } else if attachment.isVideo, let url = localURL {
-                VideoPlayer(player: AVPlayer(url: url))
-                    .aspectRatio(16 / 9, contentMode: .fit)
+                if isPlayingVideo {
+                    VideoPlayer(player: AVPlayer(url: url))
+                        .aspectRatio(16 / 9, contentMode: .fit)
+                } else {
+                    Button {
+                        isPlayingVideo = true
+                    } label: {
+                        VideoAttachmentThumbnail(url: url, filename: attachment.filename)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Play \(attachment.filename)")
+                }
             } else {
                 AttachmentPlaceholder(attachment: attachment)
             }
@@ -88,6 +102,80 @@ private struct AttachmentTile: View {
         }
 
         return try? mediaStore.fileURL(relativePath: path)
+    }
+}
+
+private struct VideoAttachmentThumbnail: View {
+    let url: URL
+    let filename: String
+
+    @State private var thumbnail: UIImage?
+    @State private var didFail = false
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.quaternary)
+
+            if let thumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .scaledToFit()
+            } else if didFail {
+                AttachmentVideoPlaceholder(filename: filename)
+            } else {
+                ProgressView()
+            }
+
+            Label("Play", systemImage: "play.fill")
+                .font(.caption.weight(.semibold))
+                .labelStyle(.titleAndIcon)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.black.opacity(0.65), in: Capsule())
+        }
+        .aspectRatio(16 / 9, contentMode: .fit)
+        .task(id: url) {
+            didFail = false
+            thumbnail = await VideoThumbnailLoader.thumbnail(for: url)
+            didFail = thumbnail == nil
+        }
+    }
+}
+
+private struct AttachmentVideoPlaceholder: View {
+    let filename: String
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "video")
+                .font(.title2)
+
+            Text(filename)
+                .font(.caption)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+        }
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(height: 220)
+    }
+}
+
+private enum VideoThumbnailLoader {
+    static func thumbnail(for url: URL) async -> UIImage? {
+        await Task.detached(priority: .utility) {
+            let asset = AVURLAsset(url: url)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 720, height: 720)
+
+            guard let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) else {
+                return nil
+            }
+            return UIImage(cgImage: cgImage)
+        }.value
     }
 }
 

@@ -181,12 +181,7 @@ private struct EditEntryView: View {
     @Environment(AppState.self) private var appState
 
     @Query private var currentEntries: [DiaryEntry]
-    @Query(
-        filter: #Predicate<DiaryEntry> { $0.isTombstoned == false },
-        sort: \DiaryEntry.updatedAt,
-        order: .reverse
-    )
-    private var suggestionEntries: [DiaryEntry]
+    @Query(sort: \DiarySuggestion.count, order: .reverse) private var suggestions: [DiarySuggestion]
 
     let syncCoordinator: SyncCoordinator
 
@@ -232,7 +227,7 @@ private struct EditEntryView: View {
     }
 
     private var draftSuggestions: DraftSuggestions {
-        DraftSuggestions(entries: suggestionEntries)
+        DraftSuggestions(suggestions: suggestions)
     }
 
     var body: some View {

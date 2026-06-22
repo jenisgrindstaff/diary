@@ -258,6 +258,7 @@ final class SyncCoordinatorTests: XCTestCase {
         let schema = Schema([
             DiaryEntry.self,
             DiaryAttachment.self,
+            DiarySuggestion.self,
             SyncCheckpoint.self,
             PendingChange.self,
             SyncEvent.self
@@ -400,6 +401,7 @@ final class DiaryIntentActionsTests: XCTestCase {
         let schema = Schema([
             DiaryEntry.self,
             DiaryAttachment.self,
+            DiarySuggestion.self,
             SyncCheckpoint.self,
             PendingChange.self,
             SyncEvent.self
