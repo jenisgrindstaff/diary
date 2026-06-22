@@ -15,6 +15,12 @@
 		D1A000000000000000000029 /* PendingChange.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000014 /* PendingChange.swift */; };
 		D1A00000000000000000002A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000015 /* AppState.swift */; };
 		D1A000000000000000000080 /* DiaryIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000081 /* DiaryIntents.swift */; };
+		D1A000000000000000000082 /* DiaryWidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000083 /* DiaryWidgetData.swift */; };
+		D1A000000000000000000084 /* DiaryWidgetPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000085 /* DiaryWidgetPublisher.swift */; };
+		D1A0000000000000000000A2 /* DiaryWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A0000000000000000000A1 /* DiaryWidgetsBundle.swift */; };
+		D1A0000000000000000000A4 /* DiaryWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A0000000000000000000A3 /* DiaryWidget.swift */; };
+		D1A0000000000000000000A8 /* DiaryWidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000083 /* DiaryWidgetData.swift */; };
+		D1A0000000000000000000AE /* DiaryWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D1A0000000000000000000A0 /* DiaryWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		D1A00000000000000000002B /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000016 /* KeychainStore.swift */; };
 		D1A00000000000000000002C /* LocalMediaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000017 /* LocalMediaStore.swift */; };
 		D1A00000000000000000002D /* SyncClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000000000000000000018 /* SyncClient.swift */; };
@@ -47,7 +53,28 @@
 			remoteGlobalIDString = D1A000000000000000000041;
 			remoteInfo = Diary;
 		};
+		D1A0000000000000000000B4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D1A000000000000000000043 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D1A0000000000000000000AF;
+			remoteInfo = DiaryWidgets;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		D1A0000000000000000000AD /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				D1A0000000000000000000AE /* DiaryWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		D1A00000000000000000000A /* Diary.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Diary.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -63,6 +90,8 @@
 		D1A000000000000000000014 /* PendingChange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PendingChange.swift"; sourceTree = "<group>"; };
 		D1A000000000000000000015 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState.swift"; sourceTree = "<group>"; };
 		D1A000000000000000000081 /* DiaryIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiaryIntents.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000083 /* DiaryWidgetData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiaryWidgetData.swift"; sourceTree = "<group>"; };
+		D1A000000000000000000085 /* DiaryWidgetPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiaryWidgetPublisher.swift"; sourceTree = "<group>"; };
 		D1A000000000000000000016 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeychainStore.swift"; sourceTree = "<group>"; };
 		D1A000000000000000000017 /* LocalMediaStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LocalMediaStore.swift"; sourceTree = "<group>"; };
 		D1A000000000000000000018 /* SyncClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SyncClient.swift"; sourceTree = "<group>"; };
@@ -83,6 +112,12 @@
 		D1A00000000000000000005A /* SyncCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SyncCoordinatorTests.swift"; sourceTree = "<group>"; };
 		D1A00000000000000000005C /* DraftFormViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DraftFormViews.swift"; sourceTree = "<group>"; };
 		D1A00000000000000000005E /* DraftSuggestionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DraftSuggestionsTests.swift"; sourceTree = "<group>"; };
+		D1A0000000000000000000A0 /* DiaryWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DiaryWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D1A0000000000000000000A1 /* DiaryWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryWidgetsBundle.swift; sourceTree = "<group>"; };
+		D1A0000000000000000000A3 /* DiaryWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryWidget.swift; sourceTree = "<group>"; };
+		D1A0000000000000000000A5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		D1A0000000000000000000A6 /* DiaryWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DiaryWidgets.entitlements; sourceTree = "<group>"; };
+		D1A0000000000000000000A7 /* Diary.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Diary.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -100,6 +135,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D1A0000000000000000000AB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -107,15 +149,28 @@
 			isa = PBXGroup;
 			children = (
 				D1A000000000000000000003 /* Diary */,
+				D1A0000000000000000000A9 /* DiaryWidgets */,
 				D1A000000000000000000004 /* DiaryTests */,
 				D1A000000000000000000002 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		D1A0000000000000000000A9 /* DiaryWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				D1A0000000000000000000A1 /* DiaryWidgetsBundle.swift */,
+				D1A0000000000000000000A3 /* DiaryWidget.swift */,
+				D1A0000000000000000000A5 /* Info.plist */,
+				D1A0000000000000000000A6 /* DiaryWidgets.entitlements */,
+			);
+			path = DiaryWidgets;
 			sourceTree = "<group>";
 		};
 		D1A000000000000000000002 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				D1A00000000000000000000A /* Diary.app */,
+				D1A0000000000000000000A0 /* DiaryWidgets.appex */,
 				D1A00000000000000000000B /* DiaryTests.xctest */,
 			);
 			name = Products;
@@ -125,8 +180,11 @@
 			isa = PBXGroup;
 			children = (
 				D1A00000000000000000000E /* Info.plist */,
+				D1A0000000000000000000A7 /* Diary.entitlements */,
 				D1A00000000000000000000F /* DiaryApp.swift */,
 				D1A000000000000000000081 /* DiaryIntents.swift */,
+				D1A000000000000000000083 /* DiaryWidgetData.swift */,
+				D1A000000000000000000085 /* DiaryWidgetPublisher.swift */,
 				D1A000000000000000000010 /* PreviewData.swift */,
 				D1A00000000000000000000C /* Assets.xcassets */,
 				D1A000000000000000000005 /* Models */,
@@ -216,15 +274,34 @@
 				D1A00000000000000000003B /* Sources */,
 				D1A00000000000000000003C /* Frameworks */,
 				D1A00000000000000000003D /* Resources */,
+				D1A0000000000000000000AD /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				D1A0000000000000000000B3 /* PBXTargetDependency */,
 			);
 			name = Diary;
 			productName = Diary;
 			productReference = D1A00000000000000000000A /* Diary.app */;
 			productType = "com.apple.product-type.application";
+		};
+		D1A0000000000000000000AF /* DiaryWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D1A0000000000000000000B0 /* Build configuration list for PBXNativeTarget "DiaryWidgets" */;
+			buildPhases = (
+				D1A0000000000000000000AA /* Sources */,
+				D1A0000000000000000000AB /* Frameworks */,
+				D1A0000000000000000000AC /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DiaryWidgets;
+			productName = DiaryWidgets;
+			productReference = D1A0000000000000000000A0 /* DiaryWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 		D1A000000000000000000042 /* DiaryTests */ = {
 			isa = PBXNativeTarget;
@@ -261,6 +338,9 @@
 						CreatedOnToolsVersion = 26.5;
 						TestTargetID = D1A000000000000000000041;
 					};
+					D1A0000000000000000000AF = {
+						CreatedOnToolsVersion = 26.5;
+					};
 				};
 			};
 			buildConfigurationList = D1A00000000000000000004C /* Build configuration list for PBXProject "Diary" */;
@@ -277,6 +357,7 @@
 			projectRoot = "";
 			targets = (
 				D1A000000000000000000041 /* Diary */,
+				D1A0000000000000000000AF /* DiaryWidgets */,
 				D1A000000000000000000042 /* DiaryTests */,
 			);
 		};
@@ -299,6 +380,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D1A0000000000000000000AC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -308,6 +396,8 @@
 			files = (
 				D1A000000000000000000024 /* DiaryApp.swift in Sources */,
 				D1A000000000000000000080 /* DiaryIntents.swift in Sources */,
+				D1A000000000000000000082 /* DiaryWidgetData.swift in Sources */,
+				D1A000000000000000000084 /* DiaryWidgetPublisher.swift in Sources */,
 				D1A000000000000000000025 /* PreviewData.swift in Sources */,
 				D1A000000000000000000026 /* DiaryEntry.swift in Sources */,
 				D1A000000000000000000027 /* DiaryAttachment.swift in Sources */,
@@ -344,10 +434,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D1A0000000000000000000AA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1A0000000000000000000A2 /* DiaryWidgetsBundle.swift in Sources */,
+				D1A0000000000000000000A4 /* DiaryWidget.swift in Sources */,
+				D1A0000000000000000000A8 /* DiaryWidgetData.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
 		D1A000000000000000000045 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = D1A000000000000000000041 /* Diary */; targetProxy = D1A000000000000000000044 /* PBXContainerItemProxy */; };
+		D1A0000000000000000000B3 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = D1A0000000000000000000AF /* DiaryWidgets */; targetProxy = D1A0000000000000000000B4 /* PBXContainerItemProxy */; };
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -463,6 +564,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Diary/Diary.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 2LXS936F7D;
@@ -486,6 +588,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Diary/Diary.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 2LXS936F7D;
@@ -542,6 +645,61 @@
 			};
 			name = Release;
 		};
+		D1A0000000000000000000B1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = DiaryWidgets/DiaryWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LXS936F7D;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = DiaryWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = grindstaff.us.Diary.DiaryWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		D1A0000000000000000000B2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = DiaryWidgets/DiaryWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LXS936F7D;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = DiaryWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = grindstaff.us.Diary.DiaryWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -568,6 +726,15 @@
 			buildConfigurations = (
 				D1A00000000000000000004A /* Debug */,
 				D1A00000000000000000004B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D1A0000000000000000000B0 /* Build configuration list for PBXNativeTarget "DiaryWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1A0000000000000000000B1 /* Debug */,
+				D1A0000000000000000000B2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

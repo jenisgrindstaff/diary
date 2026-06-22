@@ -18,6 +18,10 @@ final class AppState {
     var registeredDeviceName: String
     var syncStatus: SyncStatus = .idle
 
+    /// Set when a widget / Shortcut deep link asks to open the new-entry
+    /// composer. Transient; the timeline consumes and clears it.
+    var pendingNewEntry = false
+
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let keychain: KeychainStore
 

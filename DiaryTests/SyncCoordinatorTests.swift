@@ -417,6 +417,69 @@ final class DiaryIntentActionsTests: XCTestCase {
 }
 
 @MainActor
+final class DiaryWidgetTests: XCTestCase {
+    private let cal = Calendar(identifier: .gregorian)
+    private let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+
+    private func day(_ offset: Int) -> Date {
+        cal.date(byAdding: .day, value: offset, to: cal.startOfDay(for: now))!.addingTimeInterval(3600)
+    }
+
+    func testStreakEmptyIsZero() {
+        XCTAssertEqual(DiaryStreak.current(entryDates: [], now: now, calendar: cal), 0)
+    }
+
+    func testStreakConsecutiveThroughToday() {
+        XCTAssertEqual(DiaryStreak.current(entryDates: [day(0), day(-1), day(-2)], now: now, calendar: cal), 3)
+    }
+
+    func testStreakCountsThroughYesterdayWhenNothingToday() {
+        XCTAssertEqual(DiaryStreak.current(entryDates: [day(-1), day(-2)], now: now, calendar: cal), 2)
+    }
+
+    func testStreakBreaksOnGapBeforeToday() {
+        // today + two-days-ago, missing yesterday → only today counts
+        XCTAssertEqual(DiaryStreak.current(entryDates: [day(0), day(-2)], now: now, calendar: cal), 1)
+    }
+
+    func testStreakZeroWhenLatestOlderThanYesterday() {
+        XCTAssertEqual(DiaryStreak.current(entryDates: [day(-2), day(-3)], now: now, calendar: cal), 0)
+    }
+
+    func testStreakDeduplicatesSameDay() {
+        XCTAssertEqual(DiaryStreak.current(entryDates: [day(0), day(0), day(-1)], now: now, calendar: cal), 2)
+    }
+
+    func testSummaryReflectsEntries() {
+        let entries = [
+            makeEntry("a", at: day(0), title: "Today"),
+            makeEntry("b", at: day(-1), title: "Yesterday")
+        ]
+        let summary = DiaryWidgetPublisher.summary(from: entries, now: now, calendar: cal)
+        XCTAssertEqual(summary.currentStreak, 2)
+        XCTAssertTrue(summary.hasEntryToday)
+        XCTAssertEqual(summary.latestTitle, "Today")
+    }
+
+    func testSummaryWhenNothingToday() {
+        let summary = DiaryWidgetPublisher.summary(from: [makeEntry("b", at: day(-1), title: "Yesterday")], now: now, calendar: cal)
+        XCTAssertFalse(summary.hasEntryToday)
+        XCTAssertEqual(summary.currentStreak, 1)
+        XCTAssertEqual(summary.latestTitle, "Yesterday")
+    }
+
+    func testWidgetStoreRoundTrips() {
+        let summary = DiaryWidgetSummary(currentStreak: 4, hasEntryToday: true, latestTitle: "Hi", updatedAt: now)
+        DiaryWidgetStore.write(summary)
+        XCTAssertEqual(DiaryWidgetStore.read(), summary)
+    }
+
+    private func makeEntry(_ id: String, at date: Date, title: String) -> DiaryEntry {
+        DiaryEntry(id: id, createdAt: date, updatedAt: date, serverRevision: "r", title: title, excerpt: "", bodyMarkdown: "")
+    }
+}
+
+@MainActor
 final class AppLockTests: XCTestCase {
     func testStartsLockedWhenEnabled() {
         let lock = AppLock(defaults: makeDefaults(enabled: true))

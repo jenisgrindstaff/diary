@@ -14,6 +14,12 @@ struct DiaryApp: App {
                     .environment(appState)
                     .environment(appLock)
                     .modelContainer(container)
+                    .onOpenURL { url in
+                        // diary://new — opened from the widget / Lock Screen.
+                        if url.scheme == "diary", url.host == "new" {
+                            appState.pendingNewEntry = true
+                        }
+                    }
             case .failure(let error):
                 // The on-disk store could not be opened (e.g. a failed
                 // migration). Show a recoverable message instead of crashing so

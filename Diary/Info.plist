@@ -25,6 +25,17 @@
 		<key>NSAllowsArbitraryLoadsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>grindstaff.us.Diary</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>diary</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Diary uses Face ID to keep your journal entries private.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

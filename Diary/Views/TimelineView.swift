@@ -64,6 +64,16 @@ struct TimelineView: View {
             .sheet(isPresented: $isPresentingNewEntry) {
                 NewEntryView(syncCoordinator: syncCoordinator)
             }
+            .task {
+                presentNewEntryIfRequested()
+                DiaryWidgetPublisher.refresh(modelContext: modelContext)
+            }
+            .onChange(of: entries.count) {
+                DiaryWidgetPublisher.refresh(modelContext: modelContext)
+            }
+            .onChange(of: appState.pendingNewEntry) {
+                presentNewEntryIfRequested()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("New Entry", systemImage: "square.and.pencil") {
@@ -88,6 +98,12 @@ struct TimelineView: View {
                 }
             }
         }
+    }
+
+    private func presentNewEntryIfRequested() {
+        guard appState.pendingNewEntry else { return }
+        appState.pendingNewEntry = false
+        isPresentingNewEntry = true
     }
 }
 
