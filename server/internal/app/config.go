@@ -6,20 +6,24 @@ import (
 )
 
 type Config struct {
-	Addr      string
-	VaultDir  string
-	ImportDir string
-	DataDir   string
-	APIToken  string
+	Addr               string
+	VaultDir           string
+	ImportDir          string
+	DataDir            string
+	APIToken           string
+	WebAuthHeader      string
+	WebAuthProxySecret string
 }
 
 func ConfigFromEnv() Config {
 	return Config{
-		Addr:      env("DIARY_ADDR", ":8080"),
-		VaultDir:  env("DIARY_VAULT_DIR", "/vault"),
-		ImportDir: env("DIARY_IMPORT_DIR", "/imports"),
-		DataDir:   env("DIARY_DATA_DIR", "/data"),
-		APIToken:  os.Getenv("DIARY_API_TOKEN"),
+		Addr:               env("DIARY_ADDR", ":8080"),
+		VaultDir:           env("DIARY_VAULT_DIR", "/vault"),
+		ImportDir:          env("DIARY_IMPORT_DIR", "/imports"),
+		DataDir:            env("DIARY_DATA_DIR", "/data"),
+		APIToken:           os.Getenv("DIARY_API_TOKEN"),
+		WebAuthHeader:      os.Getenv("DIARY_WEB_AUTH_HEADER"),
+		WebAuthProxySecret: os.Getenv("DIARY_WEB_AUTH_PROXY_SECRET"),
 	}
 }
 

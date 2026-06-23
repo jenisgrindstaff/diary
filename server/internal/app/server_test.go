@@ -90,6 +90,69 @@ func TestAuthRejectsMissingToken(t *testing.T) {
 	}
 }
 
+func TestWebProxyAuthProtectsWebButNotAPI(t *testing.T) {
+	srv := testServerWithImport(t)
+	defer srv.Close()
+
+	srv.cfg.WebAuthHeader = "Remote-User"
+	srv.cfg.WebAuthProxySecret = "proxy-secret"
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected web route unauthorized without proxy auth, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Remote-User", "jenny")
+	rec = httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected missing proxy secret rejected, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Remote-User", "jenny")
+	req.Header.Set("X-Diary-Proxy-Secret", "proxy-secret")
+	rec = httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected proxy-authenticated web route, got %d body %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/entries", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec = httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected API bearer auth to bypass web proxy auth, got %d body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestShareRouteBypassesWebProxyAuth(t *testing.T) {
+	srv := testServerWithImport(t)
+	defer srv.Close()
+
+	entries, err := srv.store.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("expected imported entries")
+	}
+
+	srv.cfg.WebAuthHeader = "Remote-User"
+	srv.cfg.WebAuthProxySecret = "proxy-secret"
+
+	req := httptest.NewRequest(http.MethodGet, "/share/"+srv.shareToken(entries[0].ID), nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected signed share link to remain public, got %d body %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestRegisterDeviceIssuesUsableToken(t *testing.T) {
 	srv := testServerWithImport(t)
 	defer srv.Close()

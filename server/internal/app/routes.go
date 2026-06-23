@@ -24,20 +24,23 @@ const deviceIDContextKey authContextKey = "device_id"
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
+	web := func(next http.HandlerFunc) http.Handler {
+		return s.webAuth(http.HandlerFunc(next))
+	}
 
 	mux.HandleFunc("GET /healthz", s.handleHealth)
-	mux.HandleFunc("GET /", s.handleHome)
-	mux.HandleFunc("GET /entries/new", s.handleNewEntry)
-	mux.HandleFunc("POST /entries", s.handleCreateEntry)
-	mux.HandleFunc("GET /entries/{id}/edit", s.handleEditEntry)
-	mux.HandleFunc("POST /entries/{id}", s.handleUpdateEntry)
-	mux.HandleFunc("POST /entries/{id}/trash", s.handleTrashEntry)
-	mux.HandleFunc("GET /entries/{id}", s.handleWebEntry)
+	mux.Handle("GET /", web(s.handleHome))
+	mux.Handle("GET /entries/new", web(s.handleNewEntry))
+	mux.Handle("POST /entries", web(s.handleCreateEntry))
+	mux.Handle("GET /entries/{id}/edit", web(s.handleEditEntry))
+	mux.Handle("POST /entries/{id}", web(s.handleUpdateEntry))
+	mux.Handle("POST /entries/{id}/trash", web(s.handleTrashEntry))
+	mux.Handle("GET /entries/{id}", web(s.handleWebEntry))
 	mux.HandleFunc("GET /share/{token}", s.handleShare)
-	mux.HandleFunc("POST /entries/{id}/attachments", s.handleWebAttachMedia)
-	mux.HandleFunc("GET /assets/{id}", s.handleWebAsset)
-	mux.HandleFunc("POST /admin/import", s.handleWebImport)
-	mux.HandleFunc("POST /admin/reindex", s.handleWebReindex)
+	mux.Handle("POST /entries/{id}/attachments", web(s.handleWebAttachMedia))
+	mux.Handle("GET /assets/{id}", web(s.handleWebAsset))
+	mux.Handle("POST /admin/import", web(s.handleWebImport))
+	mux.Handle("POST /admin/reindex", web(s.handleWebReindex))
 	mux.Handle("GET /api/v1/entries", s.auth(http.HandlerFunc(s.handleEntries)))
 	mux.Handle("POST /api/v1/entries", s.auth(http.HandlerFunc(s.handleCreateEntryAPI)))
 	mux.Handle("GET /api/v1/entries/{id}", s.auth(http.HandlerFunc(s.handleEntry)))
@@ -52,6 +55,27 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /api/v1/admin/reindex", s.auth(http.HandlerFunc(s.handleReindex)))
 
 	return loggingMiddleware(s.logger)(mux)
+}
+
+func (s *Server) webAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.WebAuthHeader == "" && s.cfg.WebAuthProxySecret == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if s.cfg.WebAuthProxySecret != "" && !constantTimeEqual(r.Header.Get("X-Diary-Proxy-Secret"), s.cfg.WebAuthProxySecret) {
+			writeError(w, http.StatusUnauthorized, "web authentication required")
+			return
+		}
+
+		if s.cfg.WebAuthHeader != "" && strings.TrimSpace(r.Header.Get(s.cfg.WebAuthHeader)) == "" {
+			writeError(w, http.StatusUnauthorized, "web authentication required")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) auth(next http.Handler) http.Handler {

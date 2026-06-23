@@ -96,6 +96,8 @@ DIARY_API_TOKEN="replace-with-a-long-random-token" docker compose up --build
 
 The compose setup mounts the real local `vault/` and `imports/` paths and stores SQLite in the `diary-data` volume. Keep the public deployment behind HTTPS and real authentication before exposing it outside the home network.
 
+For an nginx + Authelia deployment where the Web UI uses two-factor auth and iOS keeps using bearer-token API sync, see [docs/nginx-authelia.md](docs/nginx-authelia.md).
+
 ## Common Development Commands
 
 Run server tests:
