@@ -194,6 +194,50 @@ final class SyncCoordinatorTests: XCTestCase {
         XCTAssertEqual(appState.syncStatus, .failed("Enter a valid server URL in Settings."))
     }
 
+    func testFullSyncClearsStaleServerCacheAndKeepsPendingLocalWork() async throws {
+        let context = try makeContext()
+        let appState = makeAppState()
+        let coordinator = SyncCoordinator()
+        let checkpoint = SyncCheckpoint(
+            cursor: "stale-cursor",
+            deviceID: appState.deviceID,
+            serverBaseURL: "http://127.0.0.1:18080"
+        )
+        let staleEntry = DiaryEntry(
+            id: "stale-server-entry",
+            createdAt: Date(timeIntervalSinceReferenceDate: 804_000_000),
+            updatedAt: Date(timeIntervalSinceReferenceDate: 804_000_100),
+            serverRevision: "rev-stale",
+            title: "Stale",
+            excerpt: "No longer on server",
+            bodyMarkdown: "No longer on server"
+        )
+        context.insert(checkpoint)
+        context.insert(staleEntry)
+
+        let draft = EntryWriteDraft(
+            createdAt: Date(timeIntervalSinceReferenceDate: 804_000_200),
+            title: "Queued",
+            bodyMarkdown: "Keep this offline work.",
+            people: [],
+            tags: []
+        )
+        let pendingEntryID = try await coordinator.createEntry(
+            draft: draft,
+            modelContext: context,
+            appState: appState
+        )
+
+        await coordinator.fullSync(modelContext: context, appState: appState)
+
+        let entries = try context.fetch(FetchDescriptor<DiaryEntry>())
+        XCTAssertFalse(entries.contains { $0.id == "stale-server-entry" })
+        XCTAssertTrue(entries.contains { $0.id == pendingEntryID })
+        XCTAssertEqual(try context.fetch(FetchDescriptor<PendingChange>()).count, 1)
+        XCTAssertNil(checkpoint.cursor)
+        XCTAssertEqual(appState.syncStatus, .failed("Enter a valid server URL in Settings."))
+    }
+
     func testConflictResolutionShowsLocalAndServerCopiesAndPreparesOverwrite() async throws {
         let context = try makeContext()
         let appState = makeAppState()

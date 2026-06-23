@@ -87,6 +87,7 @@ final class SyncCoordinator {
     func fullSync(modelContext: ModelContext, appState: AppState) async {
         do {
             try resetSyncCursor(modelContext: modelContext)
+            try resetLocalServerCache(modelContext: modelContext)
         } catch {
             lastError = error.localizedDescription
             appState.syncStatus = .failed(error.localizedDescription)
@@ -745,6 +746,23 @@ final class SyncCoordinator {
         for checkpoint in try modelContext.fetch(FetchDescriptor<SyncCheckpoint>()) {
             checkpoint.cursor = nil
         }
+    }
+
+    private func resetLocalServerCache(modelContext: ModelContext) throws {
+        let protectedEntryIDs = Set(try pendingChanges(modelContext: modelContext).map(\.entryID))
+        let entries = try modelContext.fetch(FetchDescriptor<DiaryEntry>())
+
+        for entry in entries {
+            guard !Self.isLocalEntryID(entry.id), !protectedEntryIDs.contains(entry.id) else {
+                continue
+            }
+
+            purgeLocalMedia(forEntryID: entry.id, modelContext: modelContext)
+            modelContext.delete(entry)
+        }
+
+        try DiarySuggestionIndex.rebuild(modelContext: modelContext)
+        try modelContext.save()
     }
 
     private func updateQueuedEntryIDs(from localID: String, to serverID: String, modelContext: ModelContext) throws {
