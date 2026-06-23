@@ -12,6 +12,7 @@ struct SearchView: View {
     @State private var searchText = ""
     @State private var serverSearchState = ServerSearchState.idle
     @State private var serverSnippetsByEntryID: [String: String] = [:]
+    @FocusState private var isSearchFocused: Bool
 
     private let localSearchLimit = 500
 
@@ -42,60 +43,67 @@ struct SearchView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if !trimmedSearchText.isEmpty && !results.isEmpty {
-                    SearchControlRow(
-                        localResultCount: results.count,
-                        totalCount: localEntries.count,
-                        state: serverSearchState,
-                        isDisabled: syncCoordinator.isSyncing
-                    ) {
-                        Task {
-                            await searchServer()
-                        }
-                    }
-                } else if !trimmedSearchText.isEmpty {
-                    SearchControlRow(
-                        localResultCount: 0,
-                        totalCount: localEntries.count,
-                        state: serverSearchState,
-                        isDisabled: syncCoordinator.isSyncing
-                    ) {
-                        Task {
-                            await searchServer()
-                        }
-                    }
-                }
+            VStack(spacing: 0) {
+                SearchField(text: $searchText, isFocused: $isSearchFocused)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    .padding(.bottom, 10)
+                    .background(.background)
 
-                ForEach(results) { entry in
-                    NavigationLink(value: entry.id) {
-                        SearchEntryRow(
-                            entry: entry,
-                            pendingChange: pendingByEntryID[entry.id],
-                            snippet: serverSnippetsByEntryID[entry.id]
-                        )
+                List {
+                    if !trimmedSearchText.isEmpty && !results.isEmpty {
+                        SearchControlRow(
+                            localResultCount: results.count,
+                            totalCount: localEntries.count,
+                            state: serverSearchState,
+                            isDisabled: syncCoordinator.isSyncing
+                        ) {
+                            Task {
+                                await searchServer()
+                            }
+                        }
+                    } else if !trimmedSearchText.isEmpty {
+                        SearchControlRow(
+                            localResultCount: 0,
+                            totalCount: localEntries.count,
+                            state: serverSearchState,
+                            isDisabled: syncCoordinator.isSyncing
+                        ) {
+                            Task {
+                                await searchServer()
+                            }
+                        }
                     }
-                    .listRowInsets(EdgeInsets(top: 10, leading: 18, bottom: 10, trailing: 18))
+
+                    ForEach(results) { entry in
+                        NavigationLink(value: entry.id) {
+                            SearchEntryRow(
+                                entry: entry,
+                                pendingChange: pendingByEntryID[entry.id],
+                                snippet: serverSnippetsByEntryID[entry.id]
+                            )
+                        }
+                        .listRowInsets(EdgeInsets(top: 10, leading: 18, bottom: 10, trailing: 18))
+                    }
                 }
-            }
-            .listStyle(.plain)
-            .overlay {
-                if localEntries.isEmpty && trimmedSearchText.isEmpty {
-                    ContentUnavailableView(
-                        "No Entries",
-                        systemImage: "book.closed",
-                        description: Text("Sync with your Markdown diary server to fill the offline cache.")
-                    )
-                } else if results.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
+                .listStyle(.plain)
+                .overlay {
+                    if localEntries.isEmpty && trimmedSearchText.isEmpty {
+                        ContentUnavailableView(
+                            "No Entries",
+                            systemImage: "book.closed",
+                            description: Text("Sync with your Markdown diary server to fill the offline cache.")
+                        )
+                    } else if results.isEmpty {
+                        ContentUnavailableView.search(text: searchText)
+                    }
                 }
             }
             .navigationTitle("Search")
             .navigationDestination(for: String.self) { entryID in
                 EntryDetailResolver(entryID: entryID)
             }
-            .searchable(text: $searchText, prompt: "Entries, tags, people")
-            .searchToolbarBehavior(.minimize)
+            .defaultFocus($isSearchFocused, true)
             .task {
                 loadLocalEntries()
             }
@@ -138,6 +146,43 @@ struct SearchView: View {
         } catch {
             localEntries = []
         }
+    }
+}
+
+private struct SearchField: View {
+    @Binding var text: String
+    @FocusState.Binding var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField("Entries, tags, people", text: $text)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .textFieldStyle(.plain)
+                .submitLabel(.search)
+                .focused($isFocused)
+
+            if !text.isEmpty {
+                Button("Clear", systemImage: "xmark.circle.fill") {
+                    text = ""
+                    isFocused = true
+                }
+                .labelStyle(.iconOnly)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+        .background(.quaternary, in: .rect(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isFocused ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.15), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 

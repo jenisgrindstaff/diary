@@ -11,7 +11,7 @@ struct RootView: View {
                 TimelineView()
             }
 
-            Tab(role: .search) {
+            Tab("Search", systemImage: "magnifyingglass") {
                 SearchView()
             }
 
