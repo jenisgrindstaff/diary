@@ -1,10 +1,13 @@
 import CoreTransferable
 import Foundation
+import AVFoundation
+import ImageIO
 import Observation
 import PhotosUI
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct TimelineView: View {
     @Environment(\.modelContext) private var modelContext
@@ -38,9 +41,14 @@ struct TimelineView: View {
                             Section {
                                 ForEach(section.entries) { entry in
                                     NavigationLink(value: entry.id) {
-                                        EntryRow(entry: entry, pendingChange: pendingByEntryID[entry.id])
+                                        TimelineEntryRow(
+                                            entry: entry,
+                                            pendingChange: pendingByEntryID[entry.id],
+                                            isToday: Calendar.current.isDateInToday(entry.createdAt)
+                                        )
                                     }
-                                    .listRowInsets(EdgeInsets(top: 10, leading: 18, bottom: 10, trailing: 18))
+                                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                                    .listRowSeparator(.hidden)
                                     .onAppear {
                                         loadMoreIfNeeded(entry)
                                     }
@@ -62,6 +70,7 @@ struct TimelineView: View {
                         }
                     }
                     .listStyle(.plain)
+                    .contentMargins(.top, 8, for: .scrollContent)
                     .refreshable {
                         await syncCoordinator.sync(modelContext: modelContext, appState: appState)
                         await timelinePager.reload(modelContext: modelContext)
@@ -240,17 +249,329 @@ private struct TimelineSectionHeader: View {
 
     var body: some View {
         HStack {
-            Text(section.title)
-                .font(.subheadline.weight(.semibold))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(section.title)
+                    .font(.title3.weight(.semibold))
+
+                Text(section.entries.count == 1 ? "1 entry" : "\(section.entries.count) entries")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Spacer()
-            Text("\(section.entries.count)")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+
+            Rectangle()
+                .fill(Color.secondary.opacity(0.18))
+                .frame(height: 1)
+                .frame(maxWidth: 96)
         }
+        .padding(.top, 12)
+        .padding(.bottom, 4)
         .textCase(nil)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(section.title), \(section.entries.count) entries")
+    }
+}
+
+private struct TimelineEntryRow: View {
+    let entry: DiaryEntry
+    var pendingChange: PendingChange?
+    let isToday: Bool
+
+    private let thumbnailSize: CGFloat = 76
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            TimelineDateRail(date: entry.createdAt, isToday: isToday)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(entry.displayTitle)
+                                .font(.headline)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            PendingChangeBadge(change: pendingChange)
+                        }
+
+                        Text(entry.displayExcerpt)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if let leadAttachment {
+                        TimelineLeadMedia(attachment: leadAttachment, size: thumbnailSize)
+                    }
+                }
+
+                TimelineMetadataStrip(entry: entry)
+            }
+            .padding(.vertical, 12)
+            .padding(.trailing, 2)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var leadAttachment: DiaryAttachment? {
+        entry.attachments.first { attachment in
+            attachment.localRelativePath != nil && (attachment.isImage || attachment.isVideo)
+        }
+    }
+}
+
+private struct TimelineDateRail: View {
+    let date: Date
+    let isToday: Bool
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(dayText)
+                .font(.title2.weight(.bold))
+                .monospacedDigit()
+
+            Text(monthWeekdayText)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+
+            if isToday {
+                Text("Today")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.accentColor, in: Capsule())
+            }
+
+            Rectangle()
+                .fill(isToday ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.22))
+                .frame(width: 2)
+                .frame(height: isToday ? 24 : 36)
+                .accessibilityHidden(true)
+        }
+        .frame(width: 50)
+        .accessibilityLabel(accessibilityDate)
+    }
+
+    private var dayText: String {
+        date.formatted(.dateTime.day(.twoDigits))
+    }
+
+    private var monthWeekdayText: String {
+        date.formatted(.dateTime.month(.abbreviated)) + "\n" + date.formatted(.dateTime.weekday(.abbreviated))
+    }
+
+    private var accessibilityDate: String {
+        if isToday {
+            return "Today, \(date.formatted(date: .complete, time: .omitted))"
+        }
+
+        return date.formatted(date: .complete, time: .omitted)
+    }
+}
+
+private struct TimelineMetadataStrip: View {
+    let entry: DiaryEntry
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(entry.people.prefix(2), id: \.self) { person in
+                TimelineChip(text: person, systemImage: "person")
+            }
+
+            ForEach(entry.tags.prefix(2), id: \.self) { tag in
+                TimelineChip(text: "#\(tag)", systemImage: nil)
+            }
+
+            if entry.attachments.count > 0 {
+                TimelineChip(text: "\(entry.attachments.count)", systemImage: "paperclip")
+            }
+        }
+        .lineLimit(1)
+    }
+}
+
+private struct TimelineChip: View {
+    let text: String
+    let systemImage: String?
+
+    var body: some View {
+        Group {
+            if let systemImage {
+                Label(text, systemImage: systemImage)
+                    .labelStyle(.titleAndIcon)
+            } else {
+                Text(text)
+            }
+        }
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(.quaternary, in: Capsule())
+    }
+}
+
+private struct TimelineLeadMedia: View {
+    let attachment: DiaryAttachment
+    let size: CGFloat
+
+    private let mediaStore = LocalMediaStore()
+
+    var body: some View {
+        Group {
+            if let url = localURL(for: attachment) {
+                if attachment.isImage {
+                    TimelineImageThumbnail(url: url)
+                } else if attachment.isVideo {
+                    TimelineVideoThumbnail(url: url)
+                }
+            } else {
+                EmptyView()
+            }
+        }
+        .frame(width: size, height: size)
+        .background(.quaternary)
+        .clipShape(.rect(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.18), lineWidth: 0.5)
+        }
+        .accessibilityLabel(attachment.filename)
+    }
+
+    private func localURL(for attachment: DiaryAttachment) -> URL? {
+        guard let path = attachment.localRelativePath else {
+            return nil
+        }
+
+        return try? mediaStore.fileURL(relativePath: path)
+    }
+}
+
+private struct TimelineImageThumbnail: View {
+    let url: URL
+
+    @State private var thumbnail: UIImage?
+    @State private var didFail = false
+
+    var body: some View {
+        Group {
+            if let thumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                TimelineMediaPlaceholder(systemImage: "photo", isLoading: !didFail)
+            }
+        }
+        .task(id: url) {
+            didFail = false
+            thumbnail = await TimelineThumbnailLoader.imageThumbnail(for: url)
+            didFail = thumbnail == nil
+        }
+    }
+}
+
+private struct TimelineVideoThumbnail: View {
+    let url: URL
+
+    @State private var thumbnail: UIImage?
+    @State private var didFail = false
+
+    var body: some View {
+        ZStack {
+            if let thumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                TimelineMediaPlaceholder(systemImage: "video", isLoading: !didFail)
+            }
+
+            Image(systemName: "play.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(8)
+                .background(.black.opacity(0.62), in: Circle())
+                .accessibilityHidden(true)
+        }
+        .task(id: url) {
+            didFail = false
+            thumbnail = await TimelineThumbnailLoader.videoThumbnail(for: url)
+            didFail = thumbnail == nil
+        }
+    }
+}
+
+private struct TimelineMediaPlaceholder: View {
+    let systemImage: String
+    let isLoading: Bool
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.quaternary)
+
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private enum TimelineThumbnailLoader {
+    static func imageThumbnail(for url: URL) async -> UIImage? {
+        await Task.detached(priority: .utility) {
+            let sourceOptions: [CFString: Any] = [
+                kCGImageSourceShouldCache: false
+            ]
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, sourceOptions as CFDictionary) else {
+                return nil
+            }
+
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: 180,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true
+            ]
+            guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+                return nil
+            }
+
+            return UIImage(cgImage: cgImage)
+        }.value
+    }
+
+    static func videoThumbnail(for url: URL) async -> UIImage? {
+        await Task.detached(priority: .utility) {
+            let asset = AVURLAsset(url: url)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 240, height: 240)
+
+            return await withCheckedContinuation { continuation in
+                generator.generateCGImageAsynchronously(for: .zero) { cgImage, _, error in
+                    guard error == nil, let cgImage else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+
+                    continuation.resume(returning: UIImage(cgImage: cgImage))
+                }
+            }
+        }.value
     }
 }
 
