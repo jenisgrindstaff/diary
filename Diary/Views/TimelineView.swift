@@ -17,64 +17,121 @@ struct TimelineView: View {
     @State private var syncCoordinator = SyncCoordinator()
     @State private var timelinePager = TimelinePager()
     @State private var composerMode: EntryComposerMode?
+    @State private var searchText = ""
+    @State private var localSearchEntries: [DiaryEntry] = []
+    @State private var serverSearchState = TimelineServerSearchState.idle
+    @FocusState private var isSearchFocused: Bool
+
+    private let localSearchLimit = 500
 
     private var pendingByEntryID: [String: PendingChange] {
         Dictionary(pendingChanges.map { ($0.entryID, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     private var sections: [TimelineSection] {
-        TimelineSection.group(timelinePager.loadedEntries)
+        TimelineSection.group(visibleEntries)
+    }
+
+    private var visibleEntries: [DiaryEntry] {
+        isSearching ? searchResults : timelinePager.loadedEntries
+    }
+
+    private var searchResults: [DiaryEntry] {
+        guard isSearching else {
+            return localSearchEntries
+        }
+
+        return localSearchEntries.filter { entry in
+            searchTerms.allSatisfy { entry.searchTextStorage.contains($0) }
+        }
+    }
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var searchTerms: [String] {
+        trimmedSearchText
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+    }
+
+    private var isSearching: Bool {
+        !searchTerms.isEmpty
     }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if timelinePager.loadedEntries.isEmpty && !timelinePager.isLoadingPage {
-                    ContentUnavailableView(
-                        "No Entries",
-                        systemImage: "book.closed",
-                        description: Text("Sync with your Markdown diary server to fill the offline cache.")
-                    )
-                } else {
-                    List {
-                        ForEach(sections) { section in
-                            Section {
-                                ForEach(section.entries) { entry in
-                                    NavigationLink(value: entry.id) {
-                                        TimelineEntryRow(
-                                            entry: entry,
-                                            pendingChange: pendingByEntryID[entry.id],
-                                            isToday: Calendar.current.isDateInToday(entry.createdAt)
-                                        )
+            VStack(spacing: 0) {
+                Group {
+                    if visibleEntries.isEmpty && !isSearching && !timelinePager.isLoadingPage {
+                        ContentUnavailableView(
+                            "No Entries",
+                            systemImage: "book.closed",
+                            description: Text("Sync with your Markdown diary server to fill the offline cache.")
+                        )
+                    } else {
+                        List {
+                            if isSearching {
+                                TimelineSearchControlRow(
+                                    localResultCount: searchResults.count,
+                                    totalCount: localSearchEntries.count,
+                                    state: serverSearchState,
+                                    isDisabled: syncCoordinator.isSyncing
+                                ) {
+                                    Task {
+                                        await searchServer()
                                     }
-                                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                                }
+                            }
+
+                            ForEach(sections) { section in
+                                Section {
+                                    ForEach(section.entries) { entry in
+                                        NavigationLink(value: entry.id) {
+                                            TimelineEntryRow(
+                                                entry: entry,
+                                                pendingChange: pendingByEntryID[entry.id],
+                                                isToday: Calendar.current.isDateInToday(entry.createdAt)
+                                            )
+                                        }
+                                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                                        .listRowSeparator(.hidden)
+                                        .onAppear {
+                                            if !isSearching {
+                                                loadMoreIfNeeded(entry)
+                                            }
+                                        }
+                                    }
+                                } header: {
+                                    TimelineSectionHeader(section: section)
+                                }
+                            }
+
+                            if timelinePager.hasMore && !isSearching {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity, alignment: .center)
                                     .listRowSeparator(.hidden)
                                     .onAppear {
-                                        loadMoreIfNeeded(entry)
+                                        Task {
+                                            await timelinePager.loadNextPage(modelContext: modelContext)
+                                        }
                                     }
-                                }
-                            } header: {
-                                TimelineSectionHeader(section: section)
                             }
                         }
-
-                        if timelinePager.hasMore {
-                            ProgressView()
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .listRowSeparator(.hidden)
-                                .onAppear {
-                                    Task {
-                                        await timelinePager.loadNextPage(modelContext: modelContext)
-                                    }
-                                }
+                        .listStyle(.plain)
+                        .contentMargins(.top, 8, for: .scrollContent)
+                        .overlay {
+                            if isSearching && searchResults.isEmpty {
+                                ContentUnavailableView.search(text: searchText)
+                            }
                         }
-                    }
-                    .listStyle(.plain)
-                    .contentMargins(.top, 8, for: .scrollContent)
-                    .refreshable {
-                        await syncCoordinator.sync(modelContext: modelContext, appState: appState)
-                        await timelinePager.reload(modelContext: modelContext)
-                        DiaryWidgetPublisher.refresh(modelContext: modelContext)
+                        .refreshable {
+                            await syncCoordinator.sync(modelContext: modelContext, appState: appState)
+                            await reloadTimeline()
+                            DiaryWidgetPublisher.refresh(modelContext: modelContext)
+                        }
                     }
                 }
             }
@@ -84,7 +141,7 @@ struct TimelineView: View {
             }
             .sheet(item: $composerMode, onDismiss: {
                 Task {
-                    await timelinePager.reload(modelContext: modelContext)
+                    await reloadTimeline()
                     DiaryWidgetPublisher.refresh(modelContext: modelContext)
                 }
             }) { mode in
@@ -96,9 +153,12 @@ struct TimelineView: View {
                 }
             }
             .task {
-                await timelinePager.reload(modelContext: modelContext)
+                await reloadTimeline()
                 presentNewEntryIfRequested()
                 DiaryWidgetPublisher.refresh(modelContext: modelContext)
+            }
+            .onChange(of: trimmedSearchText) { _, _ in
+                serverSearchState = .idle
             }
             .onChange(of: appState.pendingNewEntry) {
                 presentNewEntryIfRequested()
@@ -125,17 +185,74 @@ struct TimelineView: View {
                     Button("Sync", systemImage: appState.syncStatus.symbolName) {
                         Task {
                             await syncCoordinator.sync(modelContext: modelContext, appState: appState)
+                            await reloadTimeline()
+                            DiaryWidgetPublisher.refresh(modelContext: modelContext)
                         }
                     }
                     .disabled(syncCoordinator.isSyncing)
                     .accessibilityHint("Downloads the latest entries from the Markdown diary server.")
                 }
-            }
-            .safeAreaInset(edge: .bottom) {
-                if case .failed = appState.syncStatus {
-                    SyncStatusBanner(status: appState.syncStatus)
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        SettingsView()
+                    } label: {
+                        Label("Settings", systemImage: "gear")
+                    }
+                    .accessibilityHint("Opens diary settings.")
                 }
             }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 8) {
+                    if case .failed = appState.syncStatus {
+                        SyncStatusBanner(status: appState.syncStatus)
+                    }
+
+                    TimelineSearchField(text: $searchText, isFocused: $isSearchFocused)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+                .background(.bar)
+            }
+        }
+    }
+
+    private func reloadTimeline() async {
+        await timelinePager.reload(modelContext: modelContext)
+        loadLocalSearchEntries()
+    }
+
+    private func searchServer() async {
+        guard !trimmedSearchText.isEmpty else {
+            return
+        }
+
+        serverSearchState = .searching
+
+        do {
+            let summary = try await syncCoordinator.searchServer(
+                query: trimmedSearchText,
+                modelContext: modelContext,
+                appState: appState
+            )
+            serverSearchState = .completed(summary.resultCount)
+            await reloadTimeline()
+        } catch {
+            serverSearchState = .failed(error.localizedDescription)
+        }
+    }
+
+    private func loadLocalSearchEntries() {
+        do {
+            var descriptor = FetchDescriptor<DiaryEntry>(
+                predicate: #Predicate { !$0.isTombstoned },
+                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            )
+            descriptor.fetchLimit = localSearchLimit
+            localSearchEntries = try modelContext.fetch(descriptor)
+        } catch {
+            localSearchEntries = []
         }
     }
 
@@ -164,6 +281,97 @@ private enum EntryComposerMode: String, Identifiable {
     case full
 
     var id: String { rawValue }
+}
+
+private struct TimelineSearchField: View {
+    @Binding var text: String
+    @FocusState.Binding var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField("Search entries, tags, people", text: $text)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .textFieldStyle(.plain)
+                .submitLabel(.search)
+                .focused($isFocused)
+
+            if !text.isEmpty {
+                Button("Clear", systemImage: "xmark.circle.fill") {
+                    text = ""
+                    isFocused = true
+                }
+                .labelStyle(.iconOnly)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+        .background(.quaternary, in: .rect(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isFocused ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.15), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private enum TimelineServerSearchState: Equatable {
+    case idle
+    case searching
+    case completed(Int)
+    case failed(String)
+}
+
+private struct TimelineSearchControlRow: View {
+    let localResultCount: Int
+    let totalCount: Int
+    let state: TimelineServerSearchState
+    let isDisabled: Bool
+    let searchServer: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("\(localResultCount) local result\(localResultCount == 1 ? "" : "s")", systemImage: "magnifyingglass")
+                Spacer()
+                Text("\(totalCount) cached")
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                serverStatus
+                Spacer()
+                Button("Search Server", systemImage: "icloud.and.arrow.down") {
+                    searchServer()
+                }
+                .disabled(isDisabled || state == .searching)
+            }
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .listRowSeparator(.hidden)
+    }
+
+    @ViewBuilder
+    private var serverStatus: some View {
+        switch state {
+        case .idle:
+            Text("Server search checks canonical Markdown.")
+        case .searching:
+            Label("Searching server", systemImage: "hourglass")
+        case .completed(let count):
+            Label("\(count) server result\(count == 1 ? "" : "s") imported", systemImage: "checkmark.circle")
+                .foregroundStyle(.green)
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+        }
+    }
 }
 
 @MainActor

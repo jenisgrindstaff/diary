@@ -6,20 +6,7 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        TabView {
-            Tab("Timeline", systemImage: "book.pages") {
-                TimelineView()
-            }
-
-            Tab("Search", systemImage: "magnifyingglass") {
-                SearchView()
-            }
-
-            Tab("Settings", systemImage: "gear") {
-                SettingsView()
-            }
-        }
-        .tabBarMinimizeBehavior(.onScrollDown)
+        TimelineView()
         .overlay {
             if appLock.isLocked {
                 LockScreenView()
