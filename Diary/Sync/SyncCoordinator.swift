@@ -494,7 +494,7 @@ final class SyncCoordinator {
         modelContext: ModelContext
     ) async throws {
         let payload: PendingEntryWritePayload = try decodePayload(change.payloadJSON)
-        let response = try await client.createEntry(payload.draft)
+        let response = try await client.createEntry(payload.draft, clientMutationID: change.id)
         var latestEntry = response.entry
         try await importEntry(latestEntry, checkpoint: checkpoint, client: client, modelContext: modelContext)
 

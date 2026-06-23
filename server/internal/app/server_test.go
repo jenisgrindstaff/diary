@@ -259,6 +259,56 @@ func TestCreateEntryAPI(t *testing.T) {
 	}
 }
 
+func TestCreateEntryAPIIsIdempotentForClientMutationID(t *testing.T) {
+	srv := testServerWithImport(t)
+	defer srv.Close()
+
+	requestBody := `{
+		"created_at": "2026-06-27T12:00:00Z",
+		"client_mutation_id": "queued-create-1",
+		"title": "Retry Safe",
+		"people": ["Charlotte"],
+		"tags": ["api"],
+		"body_markdown": "* Created once even if the client retries."
+	}`
+
+	create := func() diary.Entry {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/entries", bytes.NewBufferString(requestBody))
+		req.Header.Set("Authorization", "Bearer secret")
+		req.Header.Set("X-Diary-Device-ID", "ios-device")
+		rec := httptest.NewRecorder()
+		srv.Routes().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+			t.Fatalf("create status %d body %s", rec.Code, rec.Body.String())
+		}
+
+		var payload struct {
+			Entry diary.Entry `json:"entry"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		return payload.Entry
+	}
+
+	first := create()
+	second := create()
+
+	if first.ID != second.ID {
+		t.Fatalf("expected retry to return same entry id, got %q then %q", first.ID, second.ID)
+	}
+
+	entries, err := srv.store.Search("Created once even if the client retries")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly one indexed retried entry, got %d: %+v", len(entries), entries)
+	}
+}
+
 func TestUpdateEntryAPI(t *testing.T) {
 	srv := testServerWithImport(t)
 	defer srv.Close()

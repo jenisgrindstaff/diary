@@ -277,6 +277,7 @@ struct MediaUploadDraft: Identifiable, Sendable {
 struct EntryWriteRequest: Encodable, Sendable {
     let createdAt: String
     let expectedServerRevision: String?
+    let clientMutationID: String?
     let title: String
     let bodyMarkdown: String
     let people: [String]
@@ -285,6 +286,7 @@ struct EntryWriteRequest: Encodable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case createdAt = "created_at"
         case expectedServerRevision = "expected_server_revision"
+        case clientMutationID = "client_mutation_id"
         case title
         case bodyMarkdown = "body_markdown"
         case people

@@ -1,6 +1,8 @@
 package app
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -13,6 +15,7 @@ type entryWriteRequest struct {
 	Date                   string   `json:"date"`
 	CreatedAt              string   `json:"created_at"`
 	ExpectedServerRevision string   `json:"expected_server_revision"`
+	ClientMutationID       string   `json:"client_mutation_id"`
 	Title                  string   `json:"title"`
 	BodyMarkdown           string   `json:"body_markdown"`
 	People                 []string `json:"people"`
@@ -32,7 +35,16 @@ func (s *Server) handleCreateEntryAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	entryID := idempotentEntryID(r, req.ClientMutationID)
+	if entryID != "" {
+		if entry, err := s.store.Entry(entryID); err == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"entry": entry})
+			return
+		}
+	}
+
 	entry, err := diary.CreateEntry(s.cfg.VaultDir, diary.CreateEntryInput{
+		ID:           entryID,
 		CreatedAt:    createdAt,
 		Title:        strings.TrimSpace(req.Title),
 		BodyMarkdown: req.BodyMarkdown,
@@ -205,6 +217,24 @@ func parseEntryDate(req entryWriteRequest) (time.Time, error) {
 		return time.ParseInLocation("2006-01-02", strings.TrimSpace(req.Date), time.Local)
 	}
 	return time.Time{}, http.ErrMissingFile
+}
+
+func idempotentEntryID(r *http.Request, clientMutationID string) string {
+	clientMutationID = strings.TrimSpace(clientMutationID)
+	if clientMutationID == "" {
+		return ""
+	}
+
+	deviceID := authenticatedDeviceID(r.Context())
+	if deviceID == "" {
+		deviceID = strings.TrimSpace(r.Header.Get("X-Diary-Device-ID"))
+	}
+	if deviceID == "" {
+		deviceID = "unknown-device"
+	}
+
+	sum := sha256.Sum256([]byte(deviceID + "\n" + clientMutationID))
+	return hex.EncodeToString(sum[:16])
 }
 
 func cleanStringList(values []string) []string {

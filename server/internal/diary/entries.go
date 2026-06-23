@@ -15,6 +15,7 @@ import (
 )
 
 type CreateEntryInput struct {
+	ID           string
 	CreatedAt    time.Time
 	Title        string
 	BodyMarkdown string
@@ -62,9 +63,13 @@ func CreateEntry(vaultDir string, input CreateEntryInput) (Entry, error) {
 		title = derivedTitle(body, people, createdAt, title)
 	}
 
-	id, err := randomID()
-	if err != nil {
-		id = stableID(createdAt.Format(time.RFC3339Nano), body)
+	id := strings.TrimSpace(input.ID)
+	if id == "" {
+		generatedID, err := randomID()
+		if err != nil {
+			generatedID = stableID(createdAt.Format(time.RFC3339Nano), body)
+		}
+		id = generatedID
 	}
 
 	entry := Entry{

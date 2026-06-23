@@ -59,11 +59,12 @@ actor SyncClient {
         return try decoder.decode(RegisterDeviceResponse.self, from: data)
     }
 
-    func createEntry(_ draft: EntryWriteDraft) async throws -> EntryMutationResponse {
+    func createEntry(_ draft: EntryWriteDraft, clientMutationID: String) async throws -> EntryMutationResponse {
         let url = baseURL.appending(path: "/api/v1/entries")
         let request = EntryWriteRequest(
             createdAt: ISO8601DateFormatter.withFractionalSeconds.string(from: draft.createdAt),
             expectedServerRevision: nil,
+            clientMutationID: clientMutationID,
             title: draft.title,
             bodyMarkdown: draft.bodyMarkdown,
             people: draft.people,
@@ -79,6 +80,7 @@ actor SyncClient {
         let request = EntryWriteRequest(
             createdAt: ISO8601DateFormatter.withFractionalSeconds.string(from: draft.createdAt),
             expectedServerRevision: draft.expectedServerRevision,
+            clientMutationID: nil,
             title: draft.title,
             bodyMarkdown: draft.bodyMarkdown,
             people: draft.people,
