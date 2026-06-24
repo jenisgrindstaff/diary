@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"diary/server/internal/diary"
 )
@@ -230,6 +231,11 @@ func TestCreateEntryAPI(t *testing.T) {
 		"date": "2026-06-27",
 		"people": ["Charlotte", "Chase"],
 		"tags": ["api"],
+		"context": {
+			"location": {"label": "Bar Harbor, ME", "precision": "place"},
+			"weather": {"provider": "apple_weather", "condition": "Cloudy", "temperature_f": 72, "attribution": "Weather"},
+			"activity": {"steps": 8432}
+		},
 		"body_markdown": "* Created from API."
 	}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/entries", body)
@@ -247,8 +253,14 @@ func TestCreateEntryAPI(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload.Entry.ID == "" || payload.Entry.Title != "Charlotte, Chase: Created from API." {
+	if payload.Entry.ID == "" || payload.Entry.Title != "Created from API." {
 		t.Fatalf("unexpected entry %+v", payload.Entry)
+	}
+	if len(payload.Entry.People) != 0 || len(payload.Entry.Tags) != 0 {
+		t.Fatalf("manual API people/tags should be ignored, got people=%+v tags=%+v", payload.Entry.People, payload.Entry.Tags)
+	}
+	if payload.Entry.Context.Location == nil || payload.Entry.Context.Location.Label != "Bar Harbor, ME" {
+		t.Fatalf("unexpected context %+v", payload.Entry.Context)
 	}
 	stored, err := srv.store.Entry(payload.Entry.ID)
 	if err != nil {
@@ -256,6 +268,13 @@ func TestCreateEntryAPI(t *testing.T) {
 	}
 	if _, err := os.Stat(stored.VaultPath); err != nil {
 		t.Fatal(err)
+	}
+	hits, err := srv.store.Search("Cloudy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) == 0 {
+		t.Fatalf("expected context to be indexed")
 	}
 }
 
@@ -686,8 +705,6 @@ func TestCreateEntryRedirectsToDetail(t *testing.T) {
 
 	body, contentType := multipartFormBody(t, map[string]string{
 		"date":          "2026-06-24",
-		"people":        "Charlotte, Chase",
-		"tags":          "local, test",
 		"body_markdown": "* A fresh local entry.",
 	}, nil)
 	req := httptest.NewRequest(http.MethodPost, "/entries", body)
@@ -712,14 +729,14 @@ func TestCreateEntryRedirectsToDetail(t *testing.T) {
 		t.Fatalf("expected one created entry, got %+v", entries)
 	}
 	entry := entries[0]
-	if entry.Title != "Charlotte, Chase: A fresh local entry." {
+	if entry.Title != "A fresh local entry." {
 		t.Fatalf("unexpected title %q", entry.Title)
 	}
 	if entry.SourcePath != "web" {
 		t.Fatalf("unexpected source path %q", entry.SourcePath)
 	}
-	if len(entry.People) != 2 || entry.People[0] != "Charlotte" || entry.People[1] != "Chase" {
-		t.Fatalf("unexpected people %+v", entry.People)
+	if len(entry.People) != 0 || len(entry.Tags) != 0 {
+		t.Fatalf("web form should not set people/tags, got people=%+v tags=%+v", entry.People, entry.Tags)
 	}
 	if _, err := os.Stat(entry.VaultPath); err != nil {
 		t.Fatal(err)
@@ -1032,11 +1049,11 @@ func TestWebAttachMediaUpdatesEntry(t *testing.T) {
 	}
 }
 
-func TestHomeSearchAndSubjectFilter(t *testing.T) {
+func TestHomeIgnoresSubjectFilterParam(t *testing.T) {
 	srv := testServerWithImport(t)
 	defer srv.Close()
 
-	req := httptest.NewRequest(http.MethodGet, "/?subject=Charlotte&q=web", nil)
+	req := httptest.NewRequest(http.MethodGet, "/?subject=Charlotte", nil)
 	rec := httptest.NewRecorder()
 	srv.Routes().ServeHTTP(rec, req)
 
@@ -1044,11 +1061,8 @@ func TestHomeSearchAndSubjectFilter(t *testing.T) {
 		t.Fatalf("home status %d body %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "1 Entries") || !strings.Contains(body, "Charlotte") {
-		t.Fatalf("expected filtered Charlotte entry:\n%s", body)
-	}
-	if strings.Contains(body, "Another entry") {
-		t.Fatalf("subject filter leaked Chase entry:\n%s", body)
+	if !strings.Contains(body, "Hello from the web") || !strings.Contains(body, "Another entry") {
+		t.Fatalf("subject query parameter should not filter entries:\n%s", body)
 	}
 }
 
@@ -1240,26 +1254,27 @@ func TestShareLinkRendersReadOnlyEntry(t *testing.T) {
 	}
 }
 
-func TestFilterEntriesByTag(t *testing.T) {
+func TestFilterEntriesByArchiveDate(t *testing.T) {
 	entries := []diary.Entry{
-		{ID: "a", Tags: []string{"family", "trip"}},
-		{ID: "b", Tags: []string{"work"}},
-		{ID: "c", Tags: []string{"family"}},
+		{ID: "a", CreatedAt: time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC)},
+		{ID: "b", CreatedAt: time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC)},
+		{ID: "c", CreatedAt: time.Date(2025, 7, 2, 0, 0, 0, 0, time.UTC)},
 	}
-	got := filterEntries(entries, "", "family", "", "")
-	if len(got) != 2 || got[0].ID != "a" || got[1].ID != "c" {
-		t.Fatalf("expected entries a and c for tag=family, got %+v", got)
+	got := filterEntries(entries, "2026", "07")
+	if len(got) != 1 || got[0].ID != "a" {
+		t.Fatalf("expected only entry a for July 2026, got %+v", got)
 	}
-	if len(filterEntries(entries, "", "missing", "", "")) != 0 {
-		t.Fatal("expected no entries for an unused tag")
+	if len(filterEntries(entries, "2024", "")) != 0 {
+		t.Fatal("expected no entries for an unused year")
 	}
 }
 
-func TestHomeRendersTagFilter(t *testing.T) {
+func TestHomeOmitsTagFilter(t *testing.T) {
 	srv := testServerWithImport(t)
 	defer srv.Close()
 
-	// Create a tagged entry through the web flow.
+	// Legacy clients may still submit a tag-shaped field, but the web flow no
+	// longer treats tags as user-facing metadata.
 	form, contentType := multipartFormBody(t, map[string]string{
 		"date":          "2026-07-02",
 		"title":         "Tagged",
@@ -1270,22 +1285,10 @@ func TestHomeRendersTagFilter(t *testing.T) {
 	req.Header.Set("Content-Type", contentType)
 	srv.Routes().ServeHTTP(httptest.NewRecorder(), req)
 
-	// The tag chip appears on the home page.
 	home := httptest.NewRecorder()
 	srv.Routes().ServeHTTP(home, httptest.NewRequest(http.MethodGet, "/", nil))
-	if !strings.Contains(home.Body.String(), "#uniquetag") {
-		t.Fatal("expected the new tag chip on the home page")
-	}
-
-	// Filtering by it keeps the tagged entry and drops the others.
-	filtered := httptest.NewRecorder()
-	srv.Routes().ServeHTTP(filtered, httptest.NewRequest(http.MethodGet, "/?tag=uniquetag", nil))
-	body := filtered.Body.String()
-	if !strings.Contains(body, "Tagged") {
-		t.Fatal("expected the tagged entry when filtering by its tag")
-	}
-	if strings.Contains(body, "Hello from the web") {
-		t.Fatal("entries without the tag should be filtered out")
+	if strings.Contains(home.Body.String(), "#uniquetag") {
+		t.Fatal("tag chip should not be shown on the home page")
 	}
 }
 

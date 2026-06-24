@@ -38,6 +38,10 @@
 	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Diary uses Face ID to keep your journal entries private.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Diary can add optional activity summaries to entries when you choose Add Context.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Diary can add an optional place and weather summary to entries when you choose Add Context.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchScreen</key>

@@ -309,8 +309,6 @@ private struct ConflictResolutionView: View {
                     systemImage: "checkmark.icloud",
                     entryTitle: resolution.serverTitle,
                     bodyMarkdown: resolution.serverBodyMarkdown,
-                    people: resolution.serverPeople,
-                    tags: resolution.serverTags,
                     dateLabel: "Updated",
                     date: resolution.serverUpdatedAt
                 )
@@ -320,8 +318,6 @@ private struct ConflictResolutionView: View {
                     systemImage: "square.and.pencil",
                     entryTitle: resolution.localTitle,
                     bodyMarkdown: resolution.localBodyMarkdown,
-                    people: resolution.localPeople,
-                    tags: resolution.localTags,
                     dateLabel: "Entry Date",
                     date: resolution.localCreatedAt
                 )
@@ -438,8 +434,6 @@ private struct ConflictVersionSection: View {
     let systemImage: String
     let entryTitle: String
     let bodyMarkdown: String
-    let people: [String]
-    let tags: [String]
     let dateLabel: String
     let date: Date
 
@@ -449,14 +443,6 @@ private struct ConflictVersionSection: View {
 
             if !entryTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 LabeledContent("Title", value: entryTitle)
-            }
-
-            if !people.isEmpty {
-                LabeledContent("People", value: people.joined(separator: ", "))
-            }
-
-            if !tags.isEmpty {
-                LabeledContent("Tags", value: tags.map { "#\($0)" }.joined(separator: ", "))
             }
 
             Text(bodyMarkdown.isEmpty ? "No body text" : bodyMarkdown)

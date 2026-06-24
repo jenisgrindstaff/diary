@@ -323,9 +323,7 @@ final class SyncCoordinatorTests: XCTestCase {
             createdAt: entry.createdAt,
             expectedServerRevision: entry.serverRevision,
             title: "Local Edit",
-            bodyMarkdown: "Local body",
-            people: ["Charlotte"],
-            tags: ["ios"]
+            bodyMarkdown: "Local body"
         )
 
         try await coordinator.updateEntry(
@@ -349,7 +347,6 @@ final class SyncCoordinatorTests: XCTestCase {
         ))
         XCTAssertEqual(resolution.localTitle, "Local Edit")
         XCTAssertEqual(resolution.serverTitle, "Server Edit")
-        XCTAssertEqual(resolution.localPeople, ["Charlotte"])
 
         try await coordinator.overwriteServerForConflict(
             id: change.id,
@@ -481,6 +478,72 @@ final class DiaryIntentActionsTests: XCTestCase {
         XCTAssertEqual(pendingChanges.count, 1)
         XCTAssertEqual(pendingChanges.first?.kind, PendingChangeKind.updateEntry.rawValue)
         XCTAssertEqual(pendingChanges.first?.entryID, "entry-today")
+        XCTAssertTrue(pendingChanges.first?.summary.contains("1 media added") == true)
+    }
+
+    func testAppendToTodayCanQueueWithoutImmediateSync() async throws {
+        let context = try makeContext()
+        let appState = makeAppState()
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let todayEntry = DiaryEntry(
+            id: "entry-today",
+            createdAt: now,
+            updatedAt: now,
+            serverRevision: "rev-1",
+            title: "Today",
+            excerpt: "Morning",
+            bodyMarkdown: "Morning."
+        )
+        context.insert(todayEntry)
+        try context.save()
+
+        let appended = try await DiaryIntentActions.appendToToday(
+            text: "Queued fast.",
+            now: now.addingTimeInterval(3600),
+            context: context,
+            appState: appState,
+            coordinator: SyncCoordinator(),
+            syncImmediately: false
+        )
+
+        XCTAssertTrue(appended)
+        XCTAssertEqual(todayEntry.bodyMarkdown, "Morning.\n\nQueued fast.")
+        XCTAssertEqual(try context.fetch(FetchDescriptor<PendingChange>()).count, 1)
+        XCTAssertEqual(appState.syncStatus, .idle)
+    }
+
+    func testAppendToTodaySupportsMediaOnlyQuickCapture() async throws {
+        let context = try makeContext()
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let todayEntry = DiaryEntry(
+            id: "entry-today",
+            createdAt: now,
+            updatedAt: now,
+            serverRevision: "rev-1",
+            title: "Today",
+            excerpt: "Morning",
+            bodyMarkdown: "Morning."
+        )
+        context.insert(todayEntry)
+        try context.save()
+
+        let media = try makeMediaUploadDraft(filename: "quick-video.mov", contentType: "video/quicktime")
+        let appended = try await DiaryIntentActions.appendToToday(
+            text: "",
+            now: now.addingTimeInterval(3600),
+            media: [media],
+            context: context,
+            appState: makeAppState(),
+            coordinator: SyncCoordinator(),
+            syncImmediately: false
+        )
+
+        let pendingChanges = try context.fetch(FetchDescriptor<PendingChange>())
+
+        XCTAssertTrue(appended)
+        XCTAssertEqual(todayEntry.bodyMarkdown, "Morning.")
+        XCTAssertEqual(pendingChanges.count, 1)
+        XCTAssertEqual(pendingChanges.first?.kind, PendingChangeKind.updateEntry.rawValue)
         XCTAssertTrue(pendingChanges.first?.summary.contains("1 media added") == true)
     }
 

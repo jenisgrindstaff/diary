@@ -40,7 +40,7 @@ func (s *Store) SearchWithSnippets(query string) ([]SearchResult, error) {
 	}
 
 	rows, err := s.db.Query(`
-SELECT e.id, e.created_at, e.updated_at, e.server_revision, e.title, e.excerpt, e.body_markdown, e.source_path, e.vault_path, e.tags_json, e.people_json, e.subject_details_json,
+SELECT e.id, e.created_at, e.updated_at, e.server_revision, e.title, e.excerpt, e.body_markdown, e.source_path, e.vault_path, e.tags_json, e.people_json, e.subject_details_json, e.context_json,
        snippet(entries_fts, -1, '[[', ']]', '...', 18)
 FROM entries_fts f
 JOIN entries e ON e.id = f.id

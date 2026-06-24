@@ -1,13 +1,10 @@
 import CoreTransferable
 import Foundation
-import AVFoundation
-import ImageIO
 import Observation
 import PhotosUI
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
-import UIKit
 
 struct TimelineView: View {
     @Environment(\.modelContext) private var modelContext
@@ -19,10 +16,15 @@ struct TimelineView: View {
     @State private var composerMode: EntryComposerMode?
     @State private var searchText = ""
     @State private var localSearchEntries: [DiaryEntry] = []
+    @State private var selectedSearchFilters: Set<TimelineSearchFilter> = []
+    @State private var recentSearches: [String] = []
+    @State private var timelineMonths: [TimelineMonthOption] = []
+    @State private var navigationSheet: TimelineNavigationSheet?
     @State private var serverSearchState = TimelineServerSearchState.idle
     @State private var isShowingSettings = false
 
-    private let localSearchLimit = 500
+    private let localSearchLimit = 2_000
+    private let timelineMonthIndexLimit = 10_000
 
     private var pendingByEntryID: [String: PendingChange] {
         Dictionary(pendingChanges.map { ($0.entryID, $0) }, uniquingKeysWith: { first, _ in first })
@@ -33,16 +35,17 @@ struct TimelineView: View {
     }
 
     private var visibleEntries: [DiaryEntry] {
-        isSearching ? searchResults : timelinePager.loadedEntries
+        hasActiveSearch ? searchResults : timelinePager.loadedEntries
     }
 
     private var searchResults: [DiaryEntry] {
-        guard isSearching else {
+        guard hasActiveSearch else {
             return localSearchEntries
         }
 
         return localSearchEntries.filter { entry in
             searchTerms.allSatisfy { entry.searchTextStorage.contains($0) }
+            && selectedSearchFilters.allSatisfy { $0.matches(entry) }
         }
     }
 
@@ -61,11 +64,29 @@ struct TimelineView: View {
         !searchTerms.isEmpty
     }
 
+    private var hasActiveSearch: Bool {
+        isSearching || !selectedSearchFilters.isEmpty
+    }
+
+    private var searchFilterOptions: [TimelineSearchFilter] {
+        var filters: [TimelineSearchFilter] = []
+
+        if localSearchEntries.contains(where: { !$0.attachments.isEmpty }) {
+            filters.append(.media)
+        }
+
+        for filter in selectedSearchFilters where !filters.contains(filter) {
+            filters.append(filter)
+        }
+
+        return filters
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 Group {
-                    if visibleEntries.isEmpty && !isSearching && !timelinePager.isLoadingPage {
+                    if visibleEntries.isEmpty && !hasActiveSearch && !timelinePager.isLoadingPage {
                         ContentUnavailableView(
                             "No Entries",
                             systemImage: "book.closed",
@@ -73,10 +94,20 @@ struct TimelineView: View {
                         )
                     } else {
                         List {
+                            if hasActiveSearch && !searchFilterOptions.isEmpty {
+                                TimelineSearchFilterRow(
+                                    filters: searchFilterOptions,
+                                    selectedFilters: $selectedSearchFilters
+                                )
+                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 8, trailing: 16))
+                                .listRowSeparator(.hidden)
+                            }
+
                             if isSearching {
                                 TimelineSearchControlRow(
                                     localResultCount: searchResults.count,
                                     totalCount: localSearchEntries.count,
+                                    isLocalCacheCapped: localSearchEntries.count == localSearchLimit,
                                     state: serverSearchState,
                                     isDisabled: syncCoordinator.isSyncing
                                 ) {
@@ -84,6 +115,14 @@ struct TimelineView: View {
                                         await searchServer()
                                     }
                                 }
+                            }
+
+                            if let anchorDate = timelinePager.anchorDate, !hasActiveSearch {
+                                TimelineJumpStatusRow(anchorDate: anchorDate) {
+                                    jumpToToday()
+                                }
+                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 8, trailing: 16))
+                                .listRowSeparator(.hidden)
                             }
 
                             ForEach(sections) { section in
@@ -99,7 +138,7 @@ struct TimelineView: View {
                                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                                         .listRowSeparator(.hidden)
                                         .onAppear {
-                                            if !isSearching {
+                                            if !hasActiveSearch {
                                                 loadMoreIfNeeded(entry)
                                             }
                                         }
@@ -109,7 +148,7 @@ struct TimelineView: View {
                                 }
                             }
 
-                            if timelinePager.hasMore && !isSearching {
+                            if timelinePager.hasMore && !hasActiveSearch {
                                 ProgressView()
                                     .frame(maxWidth: .infinity, alignment: .center)
                                     .listRowSeparator(.hidden)
@@ -123,8 +162,16 @@ struct TimelineView: View {
                         .listStyle(.plain)
                         .contentMargins(.top, 8, for: .scrollContent)
                         .overlay {
-                            if isSearching && searchResults.isEmpty {
-                                ContentUnavailableView.search(text: searchText)
+                            if hasActiveSearch && searchResults.isEmpty {
+                                if isSearching {
+                                    ContentUnavailableView.search(text: searchText)
+                                } else {
+                                    ContentUnavailableView(
+                                        "No Matches",
+                                        systemImage: "line.3.horizontal.decrease.circle",
+                                        description: Text("Try another filter or clear filters to return to the timeline.")
+                                    )
+                                }
                             }
                         }
                         .refreshable {
@@ -136,12 +183,33 @@ struct TimelineView: View {
                 }
             }
             .navigationTitle("Diary")
-            .searchable(text: $searchText, placement: .toolbar, prompt: "Search entries, people")
+            .searchable(text: $searchText, placement: .toolbar, prompt: "Search entries")
+            .searchSuggestions {
+                ForEach(recentSearches, id: \.self) { recentSearch in
+                    Text(recentSearch)
+                        .searchCompletion(recentSearch)
+                }
+            }
+            .onSubmit(of: .search) {
+                recordRecentSearch()
+            }
             .navigationDestination(for: String.self) { entryID in
                 EntryDetailResolver(entryID: entryID)
             }
             .navigationDestination(isPresented: $isShowingSettings) {
                 SettingsView()
+            }
+            .sheet(item: $navigationSheet) { sheet in
+                switch sheet {
+                case .jump:
+                    TimelineJumpNavigationView(
+                        months: timelineMonths,
+                        selectedFilters: $selectedSearchFilters,
+                        jumpToToday: jumpToToday,
+                        jumpToDate: jumpToDate,
+                        jumpToMonth: jumpToMonth
+                    )
+                }
             }
             .sheet(item: $composerMode, onDismiss: {
                 Task {
@@ -158,6 +226,7 @@ struct TimelineView: View {
             }
             .task {
                 await reloadTimeline()
+                recentSearches = RecentSearchStore.load()
                 presentNewEntryIfRequested()
                 DiaryWidgetPublisher.refresh(modelContext: modelContext)
             }
@@ -178,6 +247,16 @@ struct TimelineView: View {
                     .accessibilityHint("Quickly appends text to today's diary entry.")
 
                     Menu {
+                        Button("Jump / Filter", systemImage: "calendar.badge.clock") {
+                            navigationSheet = .jump
+                        }
+
+                        Button("Today", systemImage: "calendar") {
+                            jumpToToday()
+                        }
+
+                        Divider()
+
                         Button("Full Entry", systemImage: "square.and.pencil") {
                             composerMode = .full
                         }
@@ -209,8 +288,9 @@ struct TimelineView: View {
     }
 
     private func reloadTimeline() async {
-        await timelinePager.reload(modelContext: modelContext)
+        await timelinePager.reload(modelContext: modelContext, anchorDate: timelinePager.anchorDate)
         loadLocalSearchEntries()
+        loadTimelineMonths()
     }
 
     private func searchServer() async {
@@ -218,6 +298,7 @@ struct TimelineView: View {
             return
         }
 
+        recordRecentSearch()
         serverSearchState = .searching
 
         do {
@@ -244,6 +325,60 @@ struct TimelineView: View {
         } catch {
             localSearchEntries = []
         }
+    }
+
+    private func loadTimelineMonths() {
+        do {
+            var descriptor = FetchDescriptor<DiaryEntry>(
+                predicate: #Predicate { !$0.isTombstoned },
+                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            )
+            descriptor.fetchLimit = timelineMonthIndexLimit
+            let entries = try modelContext.fetch(descriptor)
+            timelineMonths = TimelineMonthOption.options(from: entries)
+        } catch {
+            timelineMonths = []
+        }
+    }
+
+    private func recordRecentSearch() {
+        let value = trimmedSearchText
+        guard !value.isEmpty else { return }
+        recentSearches = RecentSearchStore.record(value, in: recentSearches)
+    }
+
+    private func jumpToToday() {
+        clearSearchState()
+        Task {
+            await timelinePager.reload(modelContext: modelContext, anchorDate: nil)
+            loadLocalSearchEntries()
+            loadTimelineMonths()
+        }
+    }
+
+    private func jumpToDate(_ date: Date) {
+        let anchorDate = Calendar.current.endOfDay(for: date)
+        clearSearchState()
+        Task {
+            await timelinePager.reload(modelContext: modelContext, anchorDate: anchorDate)
+            loadLocalSearchEntries()
+            loadTimelineMonths()
+        }
+    }
+
+    private func jumpToMonth(_ month: TimelineMonthOption) {
+        clearSearchState()
+        Task {
+            await timelinePager.reload(modelContext: modelContext, anchorDate: month.anchorDate)
+            loadLocalSearchEntries()
+            loadTimelineMonths()
+        }
+    }
+
+    private func clearSearchState() {
+        searchText = ""
+        selectedSearchFilters.removeAll()
+        serverSearchState = .idle
     }
 
     private func presentNewEntryIfRequested() {
@@ -273,6 +408,12 @@ private enum EntryComposerMode: String, Identifiable {
     var id: String { rawValue }
 }
 
+private enum TimelineNavigationSheet: String, Identifiable {
+    case jump
+
+    var id: String { rawValue }
+}
+
 private enum TimelineServerSearchState: Equatable {
     case idle
     case searching
@@ -280,9 +421,243 @@ private enum TimelineServerSearchState: Equatable {
     case failed(String)
 }
 
+private enum TimelineSearchFilter: Hashable, Identifiable {
+    case media
+
+    var id: String {
+        switch self {
+        case .media:
+            return "media"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .media:
+            return "Media"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .media:
+            return "photo.on.rectangle"
+        }
+    }
+
+    func matches(_ entry: DiaryEntry) -> Bool {
+        switch self {
+        case .media:
+            return !entry.attachments.isEmpty
+        }
+    }
+}
+
+private struct TimelineSearchFilterRow: View {
+    let filters: [TimelineSearchFilter]
+    @Binding var selectedFilters: Set<TimelineSearchFilter>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                if !selectedFilters.isEmpty {
+                    Button("Clear") {
+                        selectedFilters.removeAll()
+                    }
+                    .font(.footnote)
+                }
+            }
+
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(filters) { filter in
+                        TimelineSearchFilterChip(
+                            filter: filter,
+                            isSelected: selectedFilters.contains(filter)
+                        ) {
+                            toggle(filter)
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func toggle(_ filter: TimelineSearchFilter) {
+        if selectedFilters.contains(filter) {
+            selectedFilters.remove(filter)
+        } else {
+            selectedFilters.insert(filter)
+        }
+    }
+}
+
+private struct TimelineSearchFilterChip: View {
+    let filter: TimelineSearchFilter
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(filter.label, systemImage: filter.systemImage)
+                .font(.footnote.weight(isSelected ? .semibold : .regular))
+                .lineLimit(1)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 7)
+                .foregroundStyle(isSelected ? .white : .primary)
+                .background(
+                    isSelected ? Color.accentColor : Color.secondary.opacity(0.14),
+                    in: Capsule()
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+private struct TimelineJumpStatusRow: View {
+    let anchorDate: Date
+    let jumpToToday: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Label {
+                Text("Showing from \(anchorDate.formatted(date: .abbreviated, time: .omitted))")
+            } icon: {
+                Image(systemName: "calendar.badge.clock")
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+
+            Spacer()
+
+            Button("Today", systemImage: "calendar") {
+                jumpToToday()
+            }
+            .font(.footnote.weight(.semibold))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(.quaternary, in: .rect(cornerRadius: 12))
+    }
+}
+
+private struct TimelineJumpNavigationView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let months: [TimelineMonthOption]
+    @Binding var selectedFilters: Set<TimelineSearchFilter>
+    let jumpToToday: () -> Void
+    let jumpToDate: (Date) -> Void
+    let jumpToMonth: (TimelineMonthOption) -> Void
+
+    @State private var selectedDate = Date()
+    @State private var selectedMonthID: String?
+
+    init(
+        months: [TimelineMonthOption],
+        selectedFilters: Binding<Set<TimelineSearchFilter>>,
+        jumpToToday: @escaping () -> Void,
+        jumpToDate: @escaping (Date) -> Void,
+        jumpToMonth: @escaping (TimelineMonthOption) -> Void
+    ) {
+        self.months = months
+        _selectedFilters = selectedFilters
+        self.jumpToToday = jumpToToday
+        self.jumpToDate = jumpToDate
+        self.jumpToMonth = jumpToMonth
+        _selectedMonthID = State(initialValue: months.first?.id)
+    }
+
+    private var filterOptions: [TimelineSearchFilter] {
+        [.media]
+    }
+
+    private var selectedMonth: TimelineMonthOption? {
+        guard let selectedMonthID else { return nil }
+        return months.first { $0.id == selectedMonthID }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Button("Jump to Today", systemImage: "calendar") {
+                        jumpToToday()
+                        dismiss()
+                    }
+
+                    DatePicker("Date", selection: $selectedDate, displayedComponents: .date)
+
+                    Button("Jump to Date", systemImage: "calendar.badge.clock") {
+                        jumpToDate(selectedDate)
+                        dismiss()
+                    }
+                } header: {
+                    Text("Date")
+                }
+
+                if !months.isEmpty {
+                    Section {
+                        Picker("Month", selection: $selectedMonthID) {
+                            ForEach(months) { month in
+                                Text(month.pickerTitle)
+                                    .tag(Optional(month.id))
+                            }
+                        }
+
+                        Button("Jump to Month", systemImage: "calendar.circle") {
+                            guard let selectedMonth else { return }
+                            jumpToMonth(selectedMonth)
+                            dismiss()
+                        }
+                        .disabled(selectedMonth == nil)
+                    } header: {
+                        Text("Month")
+                    } footer: {
+                        Text("Months are built from the local offline cache.")
+                    }
+                }
+
+                if !filterOptions.isEmpty {
+                    Section {
+                        TimelineSearchFilterRow(
+                            filters: filterOptions,
+                            selectedFilters: $selectedFilters
+                        )
+                    } header: {
+                        Text("Media")
+                    } footer: {
+                        Text("Filters apply to cached local entries.")
+                    }
+                }
+            }
+            .navigationTitle("Jump / Filter")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
 private struct TimelineSearchControlRow: View {
     let localResultCount: Int
     let totalCount: Int
+    let isLocalCacheCapped: Bool
     let state: TimelineServerSearchState
     let isDisabled: Bool
     let searchServer: () -> Void
@@ -314,7 +689,7 @@ private struct TimelineSearchControlRow: View {
     private var serverStatus: some View {
         switch state {
         case .idle:
-            Text("Server search checks canonical Markdown.")
+            Text(isLocalCacheCapped ? "Local cache is capped. Search server for all results." : "Search server for complete Markdown results.")
         case .searching:
             Label("Searching server", systemImage: "hourglass")
         case .completed(let count):
@@ -327,6 +702,99 @@ private struct TimelineSearchControlRow: View {
     }
 }
 
+private enum RecentSearchStore {
+    private static let key = "timelineRecentSearches"
+    private static let limit = 6
+
+    static func load() -> [String] {
+        UserDefaults.standard.stringArray(forKey: key) ?? []
+    }
+
+    static func record(_ value: String, in existing: [String]) -> [String] {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return existing }
+
+        let normalized = trimmed.diarySearchNormalized
+        var searches = existing.filter { $0.diarySearchNormalized != normalized }
+        searches.insert(trimmed, at: 0)
+        searches = Array(searches.prefix(limit))
+        UserDefaults.standard.set(searches, forKey: key)
+        return searches
+    }
+}
+
+private extension String {
+    var diarySearchNormalized: String {
+        trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+    }
+}
+
+private struct TimelineMonthOption: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let entryCount: Int
+    let anchorDate: Date
+
+    var pickerTitle: String {
+        "\(title) (\(entryCount))"
+    }
+
+    static func options(from entries: [DiaryEntry], calendar: Calendar = .current) -> [TimelineMonthOption] {
+        var buckets: [String: TimelineMonthBucket] = [:]
+
+        for entry in entries {
+            let components = calendar.dateComponents([.year, .month], from: entry.createdAt)
+            guard let year = components.year,
+                  let month = components.month,
+                  let startDate = calendar.date(from: components) else {
+                continue
+            }
+
+            let id = "\(year)-\(String(format: "%02d", month))"
+            var bucket = buckets[id] ?? TimelineMonthBucket(
+                id: id,
+                startDate: startDate,
+                count: 0
+            )
+            bucket.count += 1
+            buckets[id] = bucket
+        }
+
+        return buckets.values
+            .sorted { $0.startDate > $1.startDate }
+            .map { bucket in
+                TimelineMonthOption(
+                    id: bucket.id,
+                    title: bucket.startDate.formatted(.dateTime.month(.wide).year()),
+                    entryCount: bucket.count,
+                    anchorDate: calendar.endOfMonth(for: bucket.startDate)
+                )
+            }
+    }
+}
+
+private struct TimelineMonthBucket {
+    let id: String
+    let startDate: Date
+    var count: Int
+}
+
+private extension Calendar {
+    func endOfDay(for date: Date) -> Date {
+        self.date(bySettingHour: 23, minute: 59, second: 59, of: date) ?? date
+    }
+
+    func endOfMonth(for date: Date) -> Date {
+        guard let interval = dateInterval(of: .month, for: date) else {
+            return endOfDay(for: date)
+        }
+
+        return interval.end.addingTimeInterval(-1)
+    }
+}
+
 @MainActor
 @Observable
 private final class TimelinePager {
@@ -335,8 +803,10 @@ private final class TimelinePager {
     private(set) var loadedEntries: [DiaryEntry] = []
     private(set) var hasMore = true
     private(set) var isLoadingPage = false
+    private(set) var anchorDate: Date?
 
-    func reload(modelContext: ModelContext) async {
+    func reload(modelContext: ModelContext, anchorDate: Date? = nil) async {
+        self.anchorDate = anchorDate
         loadedEntries = []
         hasMore = true
         await loadNextPage(modelContext: modelContext)
@@ -348,10 +818,18 @@ private final class TimelinePager {
         defer { isLoadingPage = false }
 
         do {
-            var descriptor = FetchDescriptor<DiaryEntry>(
-                predicate: #Predicate { !$0.isTombstoned },
-                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-            )
+            var descriptor: FetchDescriptor<DiaryEntry>
+            if let anchorDate {
+                descriptor = FetchDescriptor<DiaryEntry>(
+                    predicate: #Predicate { !$0.isTombstoned && $0.createdAt <= anchorDate },
+                    sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+                )
+            } else {
+                descriptor = FetchDescriptor<DiaryEntry>(
+                    predicate: #Predicate { !$0.isTombstoned },
+                    sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+                )
+            }
             descriptor.fetchLimit = pageSize
             descriptor.fetchOffset = loadedEntries.count
 
@@ -490,10 +968,11 @@ private struct TimelineDateRail: View {
     let isToday: Bool
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 5) {
             Text(dayText)
                 .font(.title2.weight(.bold))
                 .monospacedDigit()
+                .foregroundStyle(isToday ? Color.accentColor : Color.primary)
 
             Text(monthWeekdayText)
                 .font(.caption2.weight(.semibold))
@@ -501,22 +980,18 @@ private struct TimelineDateRail: View {
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
 
-            if isToday {
-                Text("Today")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Color.accentColor, in: Capsule())
-            }
+            Circle()
+                .fill(isToday ? Color.accentColor : Color.clear)
+                .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
 
             Rectangle()
-                .fill(isToday ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.22))
+                .fill(isToday ? Color.accentColor.opacity(0.38) : Color.secondary.opacity(0.22))
                 .frame(width: 2)
-                .frame(height: isToday ? 24 : 36)
+                .frame(height: 30)
                 .accessibilityHidden(true)
         }
-        .frame(width: 50)
+        .frame(width: 56)
         .accessibilityLabel(accessibilityDate)
     }
 
@@ -542,16 +1017,12 @@ private struct TimelineMetadataStrip: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(entry.people.prefix(2), id: \.self) { person in
-                TimelineChip(text: person, systemImage: "person")
-            }
-
-            ForEach(entry.tags.prefix(2), id: \.self) { tag in
-                TimelineChip(text: "#\(tag)", systemImage: nil)
-            }
-
             if entry.attachments.count > 0 {
                 TimelineChip(text: "\(entry.attachments.count)", systemImage: "paperclip")
+            }
+
+            ForEach(entry.entryContext.summaryChips.prefix(2), id: \.self) { chip in
+                TimelineChip(text: chip, systemImage: "sparkles")
             }
         }
         .lineLimit(1)
@@ -619,42 +1090,29 @@ private struct TimelineLeadMedia: View {
 private struct TimelineImageThumbnail: View {
     let url: URL
 
-    @State private var thumbnail: UIImage?
-    @State private var didFail = false
-
     var body: some View {
-        Group {
-            if let thumbnail {
-                Image(uiImage: thumbnail)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                TimelineMediaPlaceholder(systemImage: "photo", isLoading: !didFail)
-            }
-        }
-        .task(id: url) {
-            didFail = false
-            thumbnail = await TimelineThumbnailLoader.imageThumbnail(for: url)
-            didFail = thumbnail == nil
-        }
+        LocalMediaThumbnailView(
+            url: url,
+            kind: .image,
+            maxPixelSize: 240,
+            contentMode: .fill,
+            placeholderSystemImage: "photo"
+        )
     }
 }
 
 private struct TimelineVideoThumbnail: View {
     let url: URL
 
-    @State private var thumbnail: UIImage?
-    @State private var didFail = false
-
     var body: some View {
         ZStack {
-            if let thumbnail {
-                Image(uiImage: thumbnail)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                TimelineMediaPlaceholder(systemImage: "video", isLoading: !didFail)
-            }
+            LocalMediaThumbnailView(
+                url: url,
+                kind: .video,
+                maxPixelSize: 240,
+                contentMode: .fill,
+                placeholderSystemImage: "video"
+            )
 
             Image(systemName: "play.fill")
                 .font(.caption.weight(.bold))
@@ -663,76 +1121,6 @@ private struct TimelineVideoThumbnail: View {
                 .background(.black.opacity(0.62), in: Circle())
                 .accessibilityHidden(true)
         }
-        .task(id: url) {
-            didFail = false
-            thumbnail = await TimelineThumbnailLoader.videoThumbnail(for: url)
-            didFail = thumbnail == nil
-        }
-    }
-}
-
-private struct TimelineMediaPlaceholder: View {
-    let systemImage: String
-    let isLoading: Bool
-
-    var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(.quaternary)
-
-            if isLoading {
-                ProgressView()
-                    .controlSize(.small)
-            } else {
-                Image(systemName: systemImage)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-}
-
-private enum TimelineThumbnailLoader {
-    static func imageThumbnail(for url: URL) async -> UIImage? {
-        await Task.detached(priority: .utility) {
-            let sourceOptions: [CFString: Any] = [
-                kCGImageSourceShouldCache: false
-            ]
-            guard let source = CGImageSourceCreateWithURL(url as CFURL, sourceOptions as CFDictionary) else {
-                return nil
-            }
-
-            let options: [CFString: Any] = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceThumbnailMaxPixelSize: 180,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceShouldCacheImmediately: true
-            ]
-            guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-                return nil
-            }
-
-            return UIImage(cgImage: cgImage)
-        }.value
-    }
-
-    static func videoThumbnail(for url: URL) async -> UIImage? {
-        await Task.detached(priority: .utility) {
-            let asset = AVURLAsset(url: url)
-            let generator = AVAssetImageGenerator(asset: asset)
-            generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = CGSize(width: 240, height: 240)
-
-            return await withCheckedContinuation { continuation in
-                generator.generateCGImageAsynchronously(for: .zero) { cgImage, _, error in
-                    guard error == nil, let cgImage else {
-                        continuation.resume(returning: nil)
-                        return
-                    }
-
-                    continuation.resume(returning: UIImage(cgImage: cgImage))
-                }
-            }
-        }.value
     }
 }
 
@@ -746,30 +1134,41 @@ private struct QuickAppendView: View {
     @State private var text = ""
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedMedia: [MediaUploadDraft] = []
+    @State private var capturedContext: DiaryEntryContext = .empty
     @State private var isLoadingMedia = false
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var isConfirmingDiscard = false
-    @State private var savedMessage: String?
+    @State private var saveConfirmationCount = 0
     @FocusState private var isTextFocused: Bool
 
     init(syncCoordinator: SyncCoordinator) {
         self.syncCoordinator = syncCoordinator
-        _text = State(initialValue: QuickAppendDraftStore.load())
+        let draft = QuickAppendDraftStore.load()
+        _text = State(initialValue: draft.text)
     }
 
     private var canSave: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        hasDraftContent
         && !isSaving
         && !isLoadingMedia
     }
 
     private var hasDraftContent: Bool {
+        hasSavedDraftFields
+        || !selectedMedia.isEmpty
+    }
+
+    private var hasSavedDraftFields: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var hasTemporaryMedia: Bool {
         !selectedMedia.isEmpty
+    }
+
+    private var draftSnapshot: QuickAppendDraft {
+        QuickAppendDraft(text: text)
     }
 
     var body: some View {
@@ -791,14 +1190,18 @@ private struct QuickAppendView: View {
                         }
                 }
 
-                Section("Media") {
+                Section {
                     PhotosPicker(
                         selection: $selectedItems,
                         maxSelectionCount: 5,
                         matching: .any(of: [.images, .videos])
                     ) {
-                        Label("Add Photos or Videos", systemImage: "photo.on.rectangle.angled")
+                        Label(
+                            selectedMedia.isEmpty ? "Add Photo or Video" : "Replace Photo or Video",
+                            systemImage: "camera"
+                        )
                     }
+                    .buttonStyle(.bordered)
                     .disabled(isSaving)
 
                     if isLoadingMedia {
@@ -809,14 +1212,10 @@ private struct QuickAppendView: View {
                     SelectedMediaPreviewGrid(media: selectedMedia, remove: removeSelectedMedia)
                 }
 
-                Section {
-                    if let savedMessage {
-                        Label(savedMessage, systemImage: "checkmark.circle")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                ContextCaptureSection(context: $capturedContext, entryDate: .now)
 
-                    if hasDraftContent {
+                Section {
+                    if hasSavedDraftFields {
                         Label("Draft saved locally", systemImage: "checkmark.circle")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -830,16 +1229,14 @@ private struct QuickAppendView: View {
             .navigationTitle("Add Today")
             .navigationBarTitleDisplayMode(.inline)
             .defaultFocus($isTextFocused, true)
-            .onChange(of: text) { _, newText in
-                QuickAppendDraftStore.save(newText)
-                if !newText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    savedMessage = nil
-                }
+            .task {
+                await Task.yield()
+                isTextFocused = true
+            }
+            .onChange(of: draftSnapshot) { _, draft in
+                QuickAppendDraftStore.save(draft)
             }
             .onChange(of: selectedItems) { _, newItems in
-                if !newItems.isEmpty {
-                    savedMessage = nil
-                }
                 Task {
                     await loadMedia(from: newItems)
                 }
@@ -857,18 +1254,9 @@ private struct QuickAppendView: View {
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Add Another") {
+                    Button("Save") {
                         Task {
-                            await save(shouldDismiss: false)
-                        }
-                    }
-                    .disabled(!canSave)
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        Task {
-                            await save(shouldDismiss: true)
+                            await save()
                         }
                     }
                     .disabled(!canSave)
@@ -895,6 +1283,7 @@ private struct QuickAppendView: View {
             } message: {
                 Text("Your text is saved locally. Selected media is temporary until you add the entry.")
             }
+            .sensoryFeedback(.success, trigger: saveConfirmationCount)
         }
     }
 
@@ -908,9 +1297,9 @@ private struct QuickAppendView: View {
         }
     }
 
-    private func save(shouldDismiss: Bool) async {
+    private func save() async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty || !selectedMedia.isEmpty else { return }
 
         isSaving = true
         defer { isSaving = false }
@@ -919,21 +1308,20 @@ private struct QuickAppendView: View {
             _ = try await DiaryIntentActions.appendToToday(
                 text: trimmed,
                 media: selectedMedia,
+                entryContext: capturedContext,
                 context: modelContext,
                 appState: appState,
-                coordinator: syncCoordinator
+                coordinator: syncCoordinator,
+                syncImmediately: false
             )
             QuickAppendDraftStore.clear()
             text = ""
+            capturedContext = .empty
             cleanupSelectedMedia()
             selectedItems = []
-
-            if shouldDismiss {
-                dismiss()
-            } else {
-                savedMessage = "Added to today"
-                isTextFocused = true
-            }
+            saveConfirmationCount += 1
+            dismiss()
+            startBackgroundSync()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -972,23 +1360,28 @@ private struct QuickAppendView: View {
         }
         selectedMedia = []
     }
+
+    private func startBackgroundSync() {
+        Task {
+            await syncCoordinator.sync(modelContext: modelContext, appState: appState)
+            DiaryWidgetPublisher.refresh(modelContext: modelContext)
+        }
+    }
 }
 
 private struct NewEntryView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
-    @Query(sort: \DiarySuggestion.count, order: .reverse) private var suggestions: [DiarySuggestion]
 
     let syncCoordinator: SyncCoordinator
 
     @State private var createdAt = Date()
     @State private var title = ""
-    @State private var peopleText = ""
-    @State private var tagsText = ""
     @State private var bodyMarkdown = ""
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedMedia: [MediaUploadDraft] = []
+    @State private var capturedContext: DiaryEntryContext = .empty
     @State private var isLoadingMedia = false
     @State private var errorMessage: String?
     @State private var isConfirmingMediaDiscard = false
@@ -999,8 +1392,6 @@ private struct NewEntryView: View {
         if let draft = NewEntryDraftStore.load() {
             _createdAt = State(initialValue: draft.createdAt)
             _title = State(initialValue: draft.title)
-            _peopleText = State(initialValue: draft.peopleText)
-            _tagsText = State(initialValue: draft.tagsText)
             _bodyMarkdown = State(initialValue: draft.bodyMarkdown)
         }
     }
@@ -1015,25 +1406,17 @@ private struct NewEntryView: View {
         NewEntryDraft(
             createdAt: createdAt,
             title: title,
-            peopleText: peopleText,
-            tagsText: tagsText,
             bodyMarkdown: bodyMarkdown
         )
     }
 
     private var hasSavedDraftContent: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        || !peopleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        || !tagsText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         || !bodyMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var hasTemporaryMedia: Bool {
         !selectedMedia.isEmpty
-    }
-
-    private var draftSuggestions: DraftSuggestions {
-        DraftSuggestions(suggestions: suggestions)
     }
 
     var body: some View {
@@ -1043,17 +1426,6 @@ private struct NewEntryView: View {
                     DatePicker("Date", selection: $createdAt)
                     TextField("Title", text: $title)
                         .textInputAutocapitalization(.sentences)
-                    TextField("People", text: $peopleText)
-                        .textInputAutocapitalization(.words)
-                    TextField("Tags", text: $tagsText)
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled()
-                    DraftSuggestionStrip(
-                        peopleText: $peopleText,
-                        tagsText: $tagsText,
-                        suggestions: draftSuggestions
-                    )
-                    DraftTokenPreview(peopleText: peopleText, tagsText: tagsText)
 
                     if hasSavedDraftContent {
                         Label("Draft saved locally", systemImage: "checkmark.circle")
@@ -1087,6 +1459,8 @@ private struct NewEntryView: View {
 
                     SelectedMediaPreviewGrid(media: selectedMedia, remove: removeSelectedMedia)
                 }
+
+                ContextCaptureSection(context: $capturedContext, entryDate: createdAt)
             }
             .navigationTitle("New Entry")
             .navigationBarTitleDisplayMode(.inline)
@@ -1136,7 +1510,7 @@ private struct NewEntryView: View {
 
                 Button("Keep Editing", role: .cancel) { }
             } message: {
-                Text("Text, date, people, and tags stay saved locally. Selected media is temporary until you create the entry.")
+                Text("Text and date stay saved locally. Selected media is temporary until you create the entry.")
             }
         }
     }
@@ -1156,8 +1530,7 @@ private struct NewEntryView: View {
             createdAt: createdAt,
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             bodyMarkdown: bodyMarkdown.trimmingCharacters(in: .whitespacesAndNewlines),
-            people: Self.cleanList(peopleText),
-            tags: Self.cleanList(tagsText)
+            context: capturedContext
         )
 
         do {
@@ -1181,10 +1554,6 @@ private struct NewEntryView: View {
         }
 
         isConfirmingMediaDiscard = true
-    }
-
-    private static func cleanList(_ value: String) -> [String] {
-        DraftTokenPreview.cleanList(value)
     }
 
     private func appendMoment(_ moment: String) {
@@ -1279,25 +1648,34 @@ private struct PickedMediaFile: Transferable {
 private struct NewEntryDraft: Codable, Equatable {
     var createdAt: Date
     var title: String
-    var peopleText: String
-    var tagsText: String
     var bodyMarkdown: String
+}
+
+private struct QuickAppendDraft: Codable, Equatable {
+    var text: String
 }
 
 private enum QuickAppendDraftStore {
     private static let key = "quickAppendDraft"
 
-    static func load() -> String {
-        UserDefaults.standard.string(forKey: key) ?? ""
+    static func load() -> QuickAppendDraft {
+        if let data = UserDefaults.standard.data(forKey: key),
+           let draft = try? JSONDecoder().decode(QuickAppendDraft.self, from: data) {
+            return draft
+        }
+
+        return QuickAppendDraft(text: UserDefaults.standard.string(forKey: key) ?? "")
     }
 
-    static func save(_ text: String) {
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+    static func save(_ draft: QuickAppendDraft) {
+        if draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             clear()
             return
         }
 
-        UserDefaults.standard.set(text, forKey: key)
+        if let data = try? JSONEncoder().encode(draft) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
     }
 
     static func clear() {
@@ -1317,8 +1695,6 @@ private enum NewEntryDraftStore {
 
     static func save(_ draft: NewEntryDraft) {
         let isEmpty = draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && draft.peopleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && draft.tagsText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && draft.bodyMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if isEmpty {
             clear()

@@ -27,18 +27,25 @@ enum DiaryIntentActions {
         title: String?,
         now: Date = .now,
         media: [MediaUploadDraft] = [],
+        entryContext: DiaryEntryContext = .empty,
         context: ModelContext,
         appState: AppState,
-        coordinator: SyncCoordinator
+        coordinator: SyncCoordinator,
+        syncImmediately: Bool = true
     ) async throws {
         let draft = EntryWriteDraft(
             createdAt: now,
             title: title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             bodyMarkdown: text,
-            people: [],
-            tags: []
+            context: entryContext
         )
-        _ = try await coordinator.createEntry(draft: draft, media: media, modelContext: context, appState: appState)
+        _ = try await coordinator.createEntry(
+            draft: draft,
+            media: media,
+            modelContext: context,
+            appState: appState,
+            syncImmediately: syncImmediately
+        )
     }
 
     /// Appends to today's most recent entry, or starts one if none exists.
@@ -49,10 +56,13 @@ enum DiaryIntentActions {
         text: String,
         now: Date = .now,
         media: [MediaUploadDraft] = [],
+        entryContext: DiaryEntryContext = .empty,
         context: ModelContext,
         appState: AppState,
-        coordinator: SyncCoordinator
+        coordinator: SyncCoordinator,
+        syncImmediately: Bool = true
     ) async throws -> Bool {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let startOfDay = Calendar.current.startOfDay(for: now)
         var descriptor = FetchDescriptor<DiaryEntry>(
             predicate: #Predicate { !$0.isTombstoned && $0.createdAt >= startOfDay },
@@ -62,24 +72,28 @@ enum DiaryIntentActions {
 
         guard let entry = try context.fetch(descriptor).first else {
             try await createEntry(
-                text: text,
+                text: trimmedText,
                 title: nil,
                 now: now,
                 media: media,
+                entryContext: entryContext,
                 context: context,
                 appState: appState,
-                coordinator: coordinator
+                coordinator: coordinator,
+                syncImmediately: syncImmediately
             )
             return false
         }
 
+        let updatedBody = trimmedText.isEmpty
+            ? entry.bodyMarkdown
+            : entry.bodyMarkdown + "\n\n" + trimmedText
         let draft = EntryWriteDraft(
             createdAt: entry.createdAt,
             expectedServerRevision: entry.serverRevision,
             title: entry.title,
-            bodyMarkdown: entry.bodyMarkdown + "\n\n" + text,
-            people: entry.people,
-            tags: entry.tags
+            bodyMarkdown: updatedBody,
+            context: mergedContext(existing: entry.entryContext, addition: entryContext)
         )
         do {
             try await coordinator.updateEntry(
@@ -87,13 +101,26 @@ enum DiaryIntentActions {
                 draft: draft,
                 media: media,
                 modelContext: context,
-                appState: appState
+                appState: appState,
+                syncImmediately: syncImmediately
             )
         } catch {
             // enqueueUpdate already persisted the change; a conflict or network
             // error during the immediate flush reconciles on the next sync.
         }
         return true
+    }
+
+    private static func mergedContext(existing: DiaryEntryContext, addition: DiaryEntryContext) -> DiaryEntryContext {
+        guard !addition.isEmpty else { return existing }
+        guard !existing.isEmpty else { return addition }
+
+        var merged = existing
+        merged.location = addition.location ?? merged.location
+        merged.weather = addition.weather ?? merged.weather
+        merged.activity = addition.activity ?? merged.activity
+        merged.source = addition.source ?? merged.source
+        return merged
     }
 
     /// Mirrors the in-app local search: fold case/diacritics and require every

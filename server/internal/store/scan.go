@@ -17,10 +17,11 @@ func insertEntry(tx *sql.Tx, entry diary.Entry) error {
 	tagsJSON, _ := json.Marshal(entry.Tags)
 	peopleJSON, _ := json.Marshal(entry.People)
 	subjectDetailsJSON, _ := json.Marshal(entry.SubjectDetails)
+	contextJSON, _ := json.Marshal(entry.Context)
 
 	_, err := tx.Exec(`
-INSERT INTO entries (id, created_at, updated_at, server_revision, title, excerpt, body_markdown, source_path, vault_path, tags_json, people_json, subject_details_json)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO entries (id, created_at, updated_at, server_revision, title, excerpt, body_markdown, source_path, vault_path, tags_json, people_json, subject_details_json, context_json)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		entry.ID,
 		entry.CreatedAt.Format(time.RFC3339Nano),
 		entry.UpdatedAt.Format(time.RFC3339Nano),
@@ -33,6 +34,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(tagsJSON),
 		string(peopleJSON),
 		string(subjectDetailsJSON),
+		string(contextJSON),
 	)
 	if err != nil {
 		return err
@@ -44,7 +46,7 @@ VALUES (?, ?, ?, ?, ?, ?)`,
 		entry.ID,
 		entry.Title,
 		entry.Excerpt,
-		entry.BodyMarkdown,
+		strings.TrimSpace(entry.BodyMarkdown+" "+entry.Context.SearchText()),
 		join(entry.Tags),
 		join(entry.People),
 	)
@@ -188,7 +190,7 @@ func deleteEntryRows(tx *sql.Tx, id string) error {
 
 func scanEntry(row rowScanner) (diary.Entry, error) {
 	var entry diary.Entry
-	var createdAt, updatedAt, tagsJSON, peopleJSON, subjectDetailsJSON string
+	var createdAt, updatedAt, tagsJSON, peopleJSON, subjectDetailsJSON, contextJSON string
 	if err := row.Scan(
 		&entry.ID,
 		&createdAt,
@@ -202,6 +204,7 @@ func scanEntry(row rowScanner) (diary.Entry, error) {
 		&tagsJSON,
 		&peopleJSON,
 		&subjectDetailsJSON,
+		&contextJSON,
 	); err != nil {
 		return diary.Entry{}, err
 	}
@@ -211,6 +214,7 @@ func scanEntry(row rowScanner) (diary.Entry, error) {
 	_ = json.Unmarshal([]byte(tagsJSON), &entry.Tags)
 	_ = json.Unmarshal([]byte(peopleJSON), &entry.People)
 	_ = json.Unmarshal([]byte(subjectDetailsJSON), &entry.SubjectDetails)
+	_ = json.Unmarshal([]byte(contextJSON), &entry.Context)
 	if entry.SubjectDetails == nil {
 		entry.SubjectDetails = []diary.SubjectDetail{}
 	}
@@ -219,7 +223,7 @@ func scanEntry(row rowScanner) (diary.Entry, error) {
 
 func scanSearchResult(row rowScanner) (SearchResult, error) {
 	var entry diary.Entry
-	var createdAt, updatedAt, tagsJSON, peopleJSON, subjectDetailsJSON, snippet string
+	var createdAt, updatedAt, tagsJSON, peopleJSON, subjectDetailsJSON, contextJSON, snippet string
 	if err := row.Scan(
 		&entry.ID,
 		&createdAt,
@@ -233,6 +237,7 @@ func scanSearchResult(row rowScanner) (SearchResult, error) {
 		&tagsJSON,
 		&peopleJSON,
 		&subjectDetailsJSON,
+		&contextJSON,
 		&snippet,
 	); err != nil {
 		return SearchResult{}, err
@@ -243,6 +248,7 @@ func scanSearchResult(row rowScanner) (SearchResult, error) {
 	_ = json.Unmarshal([]byte(tagsJSON), &entry.Tags)
 	_ = json.Unmarshal([]byte(peopleJSON), &entry.People)
 	_ = json.Unmarshal([]byte(subjectDetailsJSON), &entry.SubjectDetails)
+	_ = json.Unmarshal([]byte(contextJSON), &entry.Context)
 	if entry.SubjectDetails == nil {
 		entry.SubjectDetails = []diary.SubjectDetail{}
 	}

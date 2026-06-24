@@ -47,6 +47,11 @@ final class SyncDTOTests: XCTestCase {
                   "raw_text": "**Charlotte**"
                 }
               ],
+              "context": {
+                "location": {"label": "Bar Harbor, ME", "precision": "place"},
+                "weather": {"provider": "apple_weather", "condition": "Cloudy", "temperature_f": 72, "attribution": "Weather"},
+                "activity": {"steps": 8432}
+              },
               "attachments": []
             }
           ],
@@ -58,6 +63,9 @@ final class SyncDTOTests: XCTestCase {
         let envelope = try makeDecoder().decode(EntrySyncEnvelope.self, from: json)
 
         XCTAssertEqual(envelope.entries.first?.id, "entry-1")
+        XCTAssertEqual(envelope.entries.first?.context.location?.label, "Bar Harbor, ME")
+        XCTAssertEqual(envelope.entries.first?.context.weather?.condition, "Cloudy")
+        XCTAssertEqual(envelope.entries.first?.context.activity?.steps, 8432)
         XCTAssertEqual(envelope.deletedEntryIDs, ["entry-2"])
         XCTAssertEqual(envelope.nextCursor, "2026-06-22T13:44:00.48969Z")
         // Absent has_more (older servers) must default to false so the client

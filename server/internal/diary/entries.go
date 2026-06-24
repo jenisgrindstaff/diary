@@ -21,6 +21,7 @@ type CreateEntryInput struct {
 	BodyMarkdown string
 	People       []string
 	Tags         []string
+	Context      *EntryContext
 	Now          time.Time
 }
 
@@ -30,6 +31,7 @@ type UpdateEntryInput struct {
 	BodyMarkdown string
 	People       []string
 	Tags         []string
+	Context      *EntryContext
 	Now          time.Time
 }
 
@@ -52,10 +54,15 @@ func CreateEntry(vaultDir string, input CreateEntryInput) (Entry, error) {
 	createdAt = createdAt.UTC()
 
 	subjectDetails := extractSubjectDetails(body)
+	configuredPeople, err := LoadPeople(vaultDir)
+	if err != nil {
+		return Entry{}, err
+	}
 	people := cleanList(input.People)
 	if len(people) == 0 {
 		people = subjectsFromDetails(subjectDetails)
 	}
+	people = MergeDetectedPeople(people, input.Title, body, configuredPeople)
 	tags := cleanList(input.Tags)
 
 	title := strings.TrimSpace(input.Title)
@@ -85,9 +92,8 @@ func CreateEntry(vaultDir string, input CreateEntryInput) (Entry, error) {
 		SubjectDetails: subjectDetails,
 		Attachments:    []Attachment{},
 	}
-	configuredPeople, err := LoadPeople(vaultDir)
-	if err != nil {
-		return Entry{}, err
+	if input.Context != nil {
+		entry.Context = *input.Context
 	}
 	entry = ApplyBirthdateDetails(entry, configuredPeople)
 	entry.ServerRevision = stableRevision(entry.BodyMarkdown, entry.UpdatedAt)
@@ -151,10 +157,15 @@ func UpdateEntry(vaultDir string, existing Entry, input UpdateEntryInput) (Entry
 	createdAt = createdAt.UTC()
 
 	subjectDetails := extractSubjectDetails(body)
+	configuredPeople, err := LoadPeople(vaultDir)
+	if err != nil {
+		return Entry{}, err
+	}
 	people := cleanList(input.People)
 	if len(people) == 0 {
 		people = subjectsFromDetails(subjectDetails)
 	}
+	people = MergeDetectedPeople(people, input.Title, body, configuredPeople)
 
 	title := strings.TrimSpace(input.Title)
 	if shouldDeriveTitle(title, people, createdAt) {
@@ -171,11 +182,10 @@ func UpdateEntry(vaultDir string, existing Entry, input UpdateEntryInput) (Entry
 	entry.People = people
 	entry.SubjectDetails = subjectDetails
 	entry.Attachments = existing.Attachments
-
-	configuredPeople, err := LoadPeople(vaultDir)
-	if err != nil {
-		return Entry{}, err
+	if input.Context != nil {
+		entry.Context = *input.Context
 	}
+
 	entry = ApplyBirthdateDetails(entry, configuredPeople)
 	entry.ServerRevision = stableRevision(entry.BodyMarkdown, entry.UpdatedAt)
 

@@ -12,14 +12,13 @@ import (
 )
 
 type entryWriteRequest struct {
-	Date                   string   `json:"date"`
-	CreatedAt              string   `json:"created_at"`
-	ExpectedServerRevision string   `json:"expected_server_revision"`
-	ClientMutationID       string   `json:"client_mutation_id"`
-	Title                  string   `json:"title"`
-	BodyMarkdown           string   `json:"body_markdown"`
-	People                 []string `json:"people"`
-	Tags                   []string `json:"tags"`
+	Date                   string              `json:"date"`
+	CreatedAt              string              `json:"created_at"`
+	ExpectedServerRevision string              `json:"expected_server_revision"`
+	ClientMutationID       string              `json:"client_mutation_id"`
+	Title                  string              `json:"title"`
+	BodyMarkdown           string              `json:"body_markdown"`
+	Context                *diary.EntryContext `json:"context"`
 }
 
 func (s *Server) handleCreateEntryAPI(w http.ResponseWriter, r *http.Request) {
@@ -48,8 +47,7 @@ func (s *Server) handleCreateEntryAPI(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:    createdAt,
 		Title:        strings.TrimSpace(req.Title),
 		BodyMarkdown: req.BodyMarkdown,
-		People:       req.People,
-		Tags:         req.Tags,
+		Context:      req.Context,
 		Now:          time.Now().UTC(),
 	})
 	if err != nil {
@@ -96,8 +94,7 @@ func (s *Server) handleUpdateEntryAPI(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:    createdAt,
 		Title:        strings.TrimSpace(req.Title),
 		BodyMarkdown: req.BodyMarkdown,
-		People:       req.People,
-		Tags:         req.Tags,
+		Context:      req.Context,
 		Now:          time.Now().UTC(),
 	})
 	if err != nil {
@@ -202,8 +199,6 @@ func decodeEntryWriteRequest(r *http.Request) (entryWriteRequest, error) {
 	}
 	req.Title = strings.TrimSpace(req.Title)
 	req.BodyMarkdown = strings.TrimSpace(req.BodyMarkdown)
-	req.People = cleanStringList(req.People)
-	req.Tags = cleanStringList(req.Tags)
 	return req, nil
 }
 
@@ -235,18 +230,4 @@ func idempotentEntryID(r *http.Request, clientMutationID string) string {
 
 	sum := sha256.Sum256([]byte(deviceID + "\n" + clientMutationID))
 	return hex.EncodeToString(sum[:16])
-}
-
-func cleanStringList(values []string) []string {
-	out := make([]string, 0, len(values))
-	seen := map[string]bool{}
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" || seen[value] {
-			continue
-		}
-		seen[value] = true
-		out = append(out, value)
-	}
-	return out
 }

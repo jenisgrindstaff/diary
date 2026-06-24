@@ -43,17 +43,25 @@ func TestLoadPeople(t *testing.T) {
 func TestApplyBirthdateDetails(t *testing.T) {
 	entry := Entry{
 		CreatedAt: time.Date(2025, 9, 28, 4, 0, 0, 0, time.UTC),
-		People:    []string{"Charlotte"},
 	}
-	entry = ApplyBirthdateDetails(entry, []Person{{
-		Name:   "Charlotte",
-		BornAt: time.Date(2016, 10, 7, 0, 56, 0, 0, time.UTC),
-	}})
+	entry = ApplyBirthdateDetails(entry, []Person{
+		{
+			Name:   "Charlotte",
+			BornAt: time.Date(2016, 10, 7, 0, 56, 0, 0, time.UTC),
+		},
+		{
+			Name:   "Chase",
+			BornAt: time.Date(2019, 1, 7, 17, 12, 0, 0, time.UTC),
+		},
+	})
 
-	if len(entry.SubjectDetails) != 1 {
-		t.Fatalf("expected one detail, got %+v", entry.SubjectDetails)
+	if len(entry.SubjectDetails) != 2 {
+		t.Fatalf("expected configured people details, got %+v", entry.SubjectDetails)
 	}
 	if entry.SubjectDetails[0].AgeText != "8 years, 11 months, 21 days, 3 hours, 4 minutes" {
 		t.Fatalf("unexpected age text %+v", entry.SubjectDetails[0])
+	}
+	if entry.SubjectDetails[1].Name != "Chase" {
+		t.Fatalf("expected Chase detail, got %+v", entry.SubjectDetails[1])
 	}
 }

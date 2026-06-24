@@ -166,10 +166,13 @@ final class SyncCoordinator {
         draft: EntryWriteDraft,
         media: [MediaUploadDraft] = [],
         modelContext: ModelContext,
-        appState: AppState
+        appState: AppState,
+        syncImmediately: Bool = true
     ) async throws -> String {
         let change = try enqueueCreate(draft: draft, media: media, modelContext: modelContext)
-        try? await tryFlushPendingChanges(modelContext: modelContext, appState: appState)
+        if syncImmediately {
+            try? await tryFlushPendingChanges(modelContext: modelContext, appState: appState)
+        }
         return change.serverEntryID ?? change.entryID
     }
 
@@ -179,7 +182,8 @@ final class SyncCoordinator {
         removedAttachmentIDs: [String] = [],
         media: [MediaUploadDraft] = [],
         modelContext: ModelContext,
-        appState: AppState
+        appState: AppState,
+        syncImmediately: Bool = true
     ) async throws {
         let change = try enqueueUpdate(
             id: id,
@@ -188,7 +192,9 @@ final class SyncCoordinator {
             media: media,
             modelContext: modelContext
         )
-        try await tryFlushPendingChanges(modelContext: modelContext, appState: appState, throwingFor: change.id)
+        if syncImmediately {
+            try await tryFlushPendingChanges(modelContext: modelContext, appState: appState, throwingFor: change.id)
+        }
     }
 
     func deleteEntry(
@@ -283,7 +289,8 @@ final class SyncCoordinator {
             title: payload.draft.title,
             bodyMarkdown: payload.draft.bodyMarkdown,
             people: payload.draft.people,
-            tags: payload.draft.tags
+            tags: payload.draft.tags,
+            context: payload.draft.context
         )
         change.payloadJSON = try encodePayload(payload)
         change.status = PendingChangeStatus.pending.rawValue
@@ -804,6 +811,7 @@ final class SyncCoordinator {
             bodyMarkdown: draft.bodyMarkdown,
             tags: draft.tags,
             people: draft.people,
+            context: draft.context,
             syncedAt: nil
         )
     }
@@ -820,6 +828,7 @@ final class SyncCoordinator {
         entry.bodyMarkdown = draft.bodyMarkdown
         entry.tags = draft.tags
         entry.people = draft.people
+        entry.entryContext = draft.context
         entry.refreshSearchText()
 
         if !removedAttachmentIDs.isEmpty {

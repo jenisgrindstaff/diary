@@ -68,9 +68,10 @@ actor SyncClient {
             title: draft.title,
             bodyMarkdown: draft.bodyMarkdown,
             people: draft.people,
-            tags: draft.tags
+            tags: draft.tags,
+            context: draft.context
         )
-        let body = try JSONEncoder().encode(request)
+        let body = try Self.requestEncoder.encode(request)
         let data = try await data(for: url, method: "POST", body: body, contentType: "application/json")
         return try decoder.decode(EntryMutationResponse.self, from: data)
     }
@@ -84,9 +85,10 @@ actor SyncClient {
             title: draft.title,
             bodyMarkdown: draft.bodyMarkdown,
             people: draft.people,
-            tags: draft.tags
+            tags: draft.tags,
+            context: draft.context
         )
-        let body = try JSONEncoder().encode(request)
+        let body = try Self.requestEncoder.encode(request)
         let data = try await data(for: url, method: "PATCH", body: body, contentType: "application/json")
         return try decoder.decode(EntryMutationResponse.self, from: data)
     }
@@ -277,6 +279,14 @@ enum SyncClientError: LocalizedError, Equatable {
     }
 }
 
+private extension SyncClient {
+    static var requestEncoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601WithFractionalSeconds
+        return encoder
+    }
+}
+
 extension JSONDecoder.DateDecodingStrategy {
     static let iso8601WithFractionalSeconds = custom { decoder in
         let container = try decoder.singleValueContainer()
@@ -291,6 +301,13 @@ extension JSONDecoder.DateDecodingStrategy {
         }
 
         throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO8601 date: \(value)")
+    }
+}
+
+extension JSONEncoder.DateEncodingStrategy {
+    static let iso8601WithFractionalSeconds = custom { date, encoder in
+        var container = encoder.singleValueContainer()
+        try container.encode(ISO8601DateFormatter.withFractionalSeconds.string(from: date))
     }
 }
 

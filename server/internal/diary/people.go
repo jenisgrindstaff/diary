@@ -45,8 +45,35 @@ func LoadPeople(vaultDir string) ([]Person, error) {
 	return people, nil
 }
 
+func MergeDetectedPeople(existing []string, title string, body string, configuredPeople []Person) []string {
+	var subjects []string
+	seen := map[string]bool{}
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		key := strings.ToLower(name)
+		if name == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		subjects = append(subjects, name)
+	}
+
+	for _, name := range existing {
+		add(name)
+	}
+
+	haystack := strings.ToLower(title + "\n" + body)
+	for _, person := range configuredPeople {
+		if containsName(haystack, person.Name) {
+			add(person.Name)
+		}
+	}
+
+	return subjects
+}
+
 func ApplyBirthdateDetails(entry Entry, people []Person) Entry {
-	if len(entry.People) == 0 || len(people) == 0 {
+	if len(people) == 0 {
 		return entry
 	}
 
@@ -62,12 +89,13 @@ func ApplyBirthdateDetails(entry Entry, people []Person) Entry {
 		}
 	}
 
-	for _, name := range entry.People {
+	for _, person := range people {
+		name := person.Name
 		if existing[name] {
 			continue
 		}
-		bornAt, ok := birthdays[name]
-		if !ok {
+		bornAt := birthdays[name]
+		if bornAt.IsZero() {
 			continue
 		}
 		entry.SubjectDetails = append(entry.SubjectDetails, SubjectDetail{
@@ -78,6 +106,22 @@ func ApplyBirthdateDetails(entry Entry, people []Person) Entry {
 	}
 
 	return entry
+}
+
+func containsName(haystack string, name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		return false
+	}
+	fields := strings.FieldsFunc(haystack, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+	})
+	for _, field := range fields {
+		if field == name {
+			return true
+		}
+	}
+	return false
 }
 
 func FormatAge(bornAt time.Time, at time.Time) string {

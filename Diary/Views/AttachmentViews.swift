@@ -1,5 +1,6 @@
 import AVFoundation
 import AVKit
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -7,43 +8,61 @@ struct AttachmentGridView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     let attachments: [DiaryAttachment]
+    var onSelect: (DiaryAttachment) -> Void = { _ in }
+
     private let mediaStore = LocalMediaStore()
 
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 12)]
     }
 
-    @ViewBuilder
     var body: some View {
-        if horizontalSizeClass == .regular {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                attachmentTiles
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Media")
+                    .font(.title3.weight(.semibold))
+
+                Text("\(attachments.count)")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Attachments")
-        } else {
-            ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 12) {
-                    ForEach(attachments) { attachment in
-                        AttachmentTile(attachment: attachment, mediaStore: mediaStore)
+
+            if horizontalSizeClass == .regular {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                    attachmentTiles
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Attachments")
+            } else {
+                ScrollView(.horizontal) {
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(attachments) { attachment in
+                            AttachmentTile(attachment: attachment, mediaStore: mediaStore) {
+                                onSelect(attachment)
+                            }
                             .containerRelativeFrame(.horizontal) { length, _ in
                                 min(length * 0.84, 340)
                             }
+                        }
                     }
+                    .padding(.vertical, 2)
                 }
-                .padding(.vertical, 2)
+                .scrollIndicators(.hidden)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Attachments")
             }
-            .scrollIndicators(.hidden)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Attachments")
         }
     }
 
     private var attachmentTiles: some View {
         ForEach(attachments) { attachment in
-            AttachmentTile(attachment: attachment, mediaStore: mediaStore)
+            AttachmentTile(attachment: attachment, mediaStore: mediaStore) {
+                onSelect(attachment)
+            }
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -52,48 +71,35 @@ struct AttachmentGridView: View {
 private struct AttachmentTile: View {
     let attachment: DiaryAttachment
     let mediaStore: LocalMediaStore
-
-    @State private var isPlayingVideo = false
+    let onSelect: () -> Void
 
     var body: some View {
-        Group {
-            if attachment.isImage, let url = localURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        AttachmentLoadingView()
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                    case .failure:
-                        AttachmentPlaceholder(attachment: attachment)
-                    @unknown default:
-                        AttachmentPlaceholder(attachment: attachment)
-                    }
-                }
-            } else if attachment.isVideo, let url = localURL {
-                if isPlayingVideo {
-                    VideoPlayer(player: AVPlayer(url: url))
-                        .aspectRatio(16 / 9, contentMode: .fit)
-                } else {
-                    Button {
-                        isPlayingVideo = true
-                    } label: {
-                        VideoAttachmentThumbnail(url: url, filename: attachment.filename)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Play \(attachment.filename)")
-                }
-            } else {
-                AttachmentPlaceholder(attachment: attachment)
-            }
+        Button(action: onSelect) {
+            attachmentPreview
         }
+        .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .center)
         .frame(minHeight: 180)
         .background(.quaternary)
         .clipShape(.rect(cornerRadius: 8))
         .accessibilityLabel(attachment.filename)
+    }
+
+    @ViewBuilder
+    private var attachmentPreview: some View {
+        if attachment.isImage, let url = localURL {
+            LocalMediaThumbnailView(
+                url: url,
+                kind: .image,
+                maxPixelSize: 720,
+                contentMode: .fit,
+                placeholderSystemImage: "photo"
+            )
+        } else if attachment.isVideo, let url = localURL {
+            VideoAttachmentThumbnail(url: url, filename: attachment.filename)
+        } else {
+            AttachmentPlaceholder(attachment: attachment)
+        }
     }
 
     private var localURL: URL? {
@@ -105,27 +111,123 @@ private struct AttachmentTile: View {
     }
 }
 
+struct AttachmentFullScreenGallery: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let attachments: [DiaryAttachment]
+
+    @State private var selectedID: String
+
+    private let mediaStore = LocalMediaStore()
+
+    init(attachments: [DiaryAttachment], selectedID: String) {
+        self.attachments = attachments
+        _selectedID = State(initialValue: selectedID)
+    }
+
+    var body: some View {
+        NavigationStack {
+            TabView(selection: $selectedID) {
+                ForEach(attachments) { attachment in
+                    AttachmentFullScreenPage(
+                        attachment: attachment,
+                        mediaStore: mediaStore
+                    )
+                    .tag(attachment.id)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .automatic))
+            .background(.black)
+            .ignoresSafeArea()
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Close", systemImage: "xmark") {
+                        dismiss()
+                    }
+                    .foregroundStyle(.white)
+                }
+            }
+            .toolbarBackground(.hidden, for: .navigationBar)
+        }
+    }
+}
+
+private struct AttachmentFullScreenPage: View {
+    let attachment: DiaryAttachment
+    let mediaStore: LocalMediaStore
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if attachment.isImage, let url = localURL {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .tint(.white)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    case .failure:
+                        fullScreenPlaceholder
+                    @unknown default:
+                        fullScreenPlaceholder
+                    }
+                }
+            } else if attachment.isVideo, let url = localURL {
+                VideoPlayer(player: AVPlayer(url: url))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                fullScreenPlaceholder
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            Text(attachment.filename)
+                .font(.footnote)
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .padding(14)
+                .background(.black.opacity(0.55), in: .rect(cornerRadius: 8))
+                .padding()
+        }
+    }
+
+    private var localURL: URL? {
+        guard let path = attachment.localRelativePath else {
+            return nil
+        }
+
+        return try? mediaStore.fileURL(relativePath: path)
+    }
+
+    private var fullScreenPlaceholder: some View {
+        VStack(spacing: 12) {
+            Image(systemName: attachment.isVideo ? "video" : "photo")
+                .font(.largeTitle)
+
+            Text("Media not cached on this device")
+                .font(.headline)
+        }
+        .foregroundStyle(.white.opacity(0.75))
+    }
+}
+
 private struct VideoAttachmentThumbnail: View {
     let url: URL
     let filename: String
 
-    @State private var thumbnail: UIImage?
-    @State private var didFail = false
-
     var body: some View {
         ZStack {
-            Rectangle()
-                .fill(.quaternary)
-
-            if let thumbnail {
-                Image(uiImage: thumbnail)
-                    .resizable()
-                    .scaledToFit()
-            } else if didFail {
-                AttachmentVideoPlaceholder(filename: filename)
-            } else {
-                ProgressView()
-            }
+            LocalMediaThumbnailView(
+                url: url,
+                kind: .video,
+                maxPixelSize: 720,
+                contentMode: .fit,
+                placeholderSystemImage: "video"
+            )
 
             Label("Play", systemImage: "play.fill")
                 .font(.caption.weight(.semibold))
@@ -136,54 +238,150 @@ private struct VideoAttachmentThumbnail: View {
                 .background(.black.opacity(0.65), in: Capsule())
         }
         .aspectRatio(16 / 9, contentMode: .fit)
-        .task(id: url) {
-            didFail = false
-            thumbnail = await VideoThumbnailLoader.thumbnail(for: url)
+        .accessibilityLabel(filename)
+    }
+}
+
+enum MediaThumbnailKind: String, Sendable {
+    case image
+    case video
+}
+
+struct LocalMediaThumbnailView: View {
+    let url: URL
+    let kind: MediaThumbnailKind
+    let maxPixelSize: CGFloat
+    var contentMode: ContentMode = .fill
+    var placeholderSystemImage: String? = nil
+
+    @State private var thumbnail: UIImage?
+    @State private var didFail = false
+
+    private var resolvedPlaceholderSystemImage: String {
+        if let placeholderSystemImage {
+            return placeholderSystemImage
+        }
+        return kind == .video ? "video" : "photo"
+    }
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.quaternary)
+
+            if let thumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: contentMode)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+            } else if didFail {
+                Image(systemName: resolvedPlaceholderSystemImage)
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .task(id: cacheKey) {
+            if thumbnail == nil {
+                didFail = false
+            }
+            thumbnail = await MediaThumbnailLoader.shared.thumbnail(
+                for: url,
+                kind: kind,
+                maxPixelSize: maxPixelSize
+            )
             didFail = thumbnail == nil
         }
     }
+
+    private var cacheKey: String {
+        MediaThumbnailLoader.cacheKey(for: url, kind: kind, maxPixelSize: maxPixelSize)
+    }
 }
 
-private struct AttachmentVideoPlaceholder: View {
-    let filename: String
+actor MediaThumbnailLoader {
+    static let shared = MediaThumbnailLoader()
 
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "video")
-                .font(.title2)
+    private var cache: [String: UIImage] = [:]
+    private var cacheOrder: [String] = []
+    private let cacheLimit = 160
 
-            Text(filename)
-                .font(.caption)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
+    static func cacheKey(for url: URL, kind: MediaThumbnailKind, maxPixelSize: CGFloat) -> String {
+        "\(kind.rawValue)|\(Int(maxPixelSize.rounded()))|\(url.standardizedFileURL.path)"
+    }
+
+    func thumbnail(for url: URL, kind: MediaThumbnailKind, maxPixelSize: CGFloat) async -> UIImage? {
+        let key = Self.cacheKey(for: url, kind: kind, maxPixelSize: maxPixelSize)
+        if let cached = cache[key] {
+            return cached
         }
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .frame(height: 220)
-    }
-}
 
-private enum VideoThumbnailLoader {
-    static func thumbnail(for url: URL) async -> UIImage? {
-        await Task.detached(priority: .utility) {
-            let asset = AVURLAsset(url: url)
-            let generator = AVAssetImageGenerator(asset: asset)
-            generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = CGSize(width: 720, height: 720)
-
-            guard let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) else {
-                return nil
+        let image = await Task.detached(priority: .utility) {
+            switch kind {
+            case .image:
+                return Self.downsampledImage(at: url, maxPixelSize: maxPixelSize)
+            case .video:
+                return await Self.videoThumbnail(at: url, maxPixelSize: maxPixelSize)
             }
-            return UIImage(cgImage: cgImage)
         }.value
-    }
-}
 
-private struct AttachmentLoadingView: View {
-    var body: some View {
-        ProgressView()
-            .frame(maxWidth: .infinity)
-            .frame(height: 220)
+        if let image {
+            insert(image, forKey: key)
+        }
+        return image
+    }
+
+    private func insert(_ image: UIImage, forKey key: String) {
+        cache[key] = image
+        cacheOrder.removeAll { $0 == key }
+        cacheOrder.append(key)
+
+        while cacheOrder.count > cacheLimit, let oldest = cacheOrder.first {
+            cache.removeValue(forKey: oldest)
+            cacheOrder.removeFirst()
+        }
+    }
+
+    private static func downsampledImage(at url: URL, maxPixelSize: CGFloat) -> UIImage? {
+        let sourceOptions: [CFString: Any] = [
+            kCGImageSourceShouldCache: false
+        ]
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, sourceOptions as CFDictionary) else {
+            return nil
+        }
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+
+        return UIImage(cgImage: image)
+    }
+
+    private static func videoThumbnail(at url: URL, maxPixelSize: CGFloat) async -> UIImage? {
+        let asset = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: maxPixelSize, height: maxPixelSize)
+
+        return await withCheckedContinuation { continuation in
+            generator.generateCGImageAsynchronously(for: .zero) { cgImage, _, error in
+                guard error == nil, let cgImage else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                continuation.resume(returning: UIImage(cgImage: cgImage))
+            }
+        }
     }
 }
 

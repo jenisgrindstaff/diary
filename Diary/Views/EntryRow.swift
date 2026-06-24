@@ -48,16 +48,8 @@ private struct EntryMetadataStrip: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if !entry.people.isEmpty {
-                ForEach(entry.people.prefix(2), id: \.self) { person in
-                    Text(person)
-                }
-            }
-
-            if !entry.tags.isEmpty {
-                ForEach(entry.tags.prefix(3), id: \.self) { tag in
-                    Text("#\(tag)")
-                }
+            ForEach(entry.entryContext.summaryChips.prefix(2), id: \.self) { chip in
+                Text(chip)
             }
         }
         .font(.caption)

@@ -36,6 +36,7 @@ type frontmatter struct {
 	People         []string        `yaml:"people"`
 	SubjectDetails []SubjectDetail `yaml:"subject_details"`
 	Attachments    []Attachment    `yaml:"attachments"`
+	Context        EntryContext    `yaml:"context,omitempty"`
 }
 
 func ParseMarkdown(path string, vaultDir string) (Entry, error) {
@@ -101,6 +102,7 @@ func ParseMarkdown(path string, vaultDir string) (Entry, error) {
 		People:         people,
 		SubjectDetails: subjectDetails,
 		Attachments:    meta.Attachments,
+		Context:        meta.Context,
 		VaultPath:      path,
 	}
 	entry.Tags = nonNilStrings(entry.Tags)
@@ -145,6 +147,7 @@ func RenderMarkdown(entry Entry) ([]byte, error) {
 		People:         entry.People,
 		SubjectDetails: entry.SubjectDetails,
 		Attachments:    entry.Attachments,
+		Context:        entry.Context,
 	}
 
 	header, err := yaml.Marshal(meta)

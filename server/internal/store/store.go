@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS entries (
 	vault_path TEXT NOT NULL,
 	tags_json TEXT NOT NULL,
 	people_json TEXT NOT NULL,
-	subject_details_json TEXT NOT NULL DEFAULT '[]'
+	subject_details_json TEXT NOT NULL DEFAULT '[]',
+	context_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS attachments (
 	id TEXT PRIMARY KEY,
@@ -92,7 +93,10 @@ CREATE INDEX IF NOT EXISTS idx_tombstones_deleted_at ON tombstones(deleted_at);`
 		return err
 	}
 
-	return s.ensureColumn("entries", "subject_details_json", "TEXT NOT NULL DEFAULT '[]'")
+	if err := s.ensureColumn("entries", "subject_details_json", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
+		return err
+	}
+	return s.ensureColumn("entries", "context_json", "TEXT NOT NULL DEFAULT '{}'")
 }
 
 // identifierPattern guards the few schema-migration statements that interpolate
@@ -230,7 +234,7 @@ func (s *Store) EntriesUpdatedSince(cursor string, limit int) (entries []diary.E
 	}
 
 	rows, err := s.db.Query(`
-SELECT id, created_at, updated_at, server_revision, title, excerpt, body_markdown, source_path, vault_path, tags_json, people_json, subject_details_json
+SELECT id, created_at, updated_at, server_revision, title, excerpt, body_markdown, source_path, vault_path, tags_json, people_json, subject_details_json, context_json
 FROM entries `+where+`
 ORDER BY updated_at ASC`+limitClause, args...)
 	if err != nil {
@@ -282,7 +286,7 @@ func (s *Store) entriesWithUpdatedAt(updatedAt time.Time) ([]diary.Entry, string
 	ts := updatedAt.Format(time.RFC3339Nano)
 
 	rows, err := s.db.Query(`
-SELECT id, created_at, updated_at, server_revision, title, excerpt, body_markdown, source_path, vault_path, tags_json, people_json, subject_details_json
+SELECT id, created_at, updated_at, server_revision, title, excerpt, body_markdown, source_path, vault_path, tags_json, people_json, subject_details_json, context_json
 FROM entries
 WHERE updated_at = ?
 ORDER BY id ASC`, ts)
@@ -349,7 +353,7 @@ ORDER BY deleted_at ASC`, args...)
 
 func (s *Store) Entries() ([]diary.Entry, error) {
 	rows, err := s.db.Query(`
-SELECT id, created_at, updated_at, server_revision, title, excerpt, body_markdown, source_path, vault_path, tags_json, people_json, subject_details_json
+SELECT id, created_at, updated_at, server_revision, title, excerpt, body_markdown, source_path, vault_path, tags_json, people_json, subject_details_json, context_json
 FROM entries
 ORDER BY created_at DESC, title ASC`)
 	if err != nil {
@@ -362,7 +366,7 @@ ORDER BY created_at DESC, title ASC`)
 
 func (s *Store) Entry(id string) (diary.Entry, error) {
 	rows, err := s.db.Query(`
-SELECT id, created_at, updated_at, server_revision, title, excerpt, body_markdown, source_path, vault_path, tags_json, people_json, subject_details_json
+SELECT id, created_at, updated_at, server_revision, title, excerpt, body_markdown, source_path, vault_path, tags_json, people_json, subject_details_json, context_json
 FROM entries
 WHERE id = ?`, id)
 	if err != nil {

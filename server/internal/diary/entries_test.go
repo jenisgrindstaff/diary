@@ -19,7 +19,11 @@ func TestCreateEntryWritesCanonicalMarkdown(t *testing.T) {
 		BodyMarkdown: "**Charlotte:** 9 years\n\n* She wrote a new story.",
 		People:       []string{"Charlotte"},
 		Tags:         []string{"school", "school"},
-		Now:          now,
+		Context: &EntryContext{
+			Location: &LocationContext{Label: "Bar Harbor, ME", Precision: "place"},
+			Weather:  &WeatherContext{Provider: "apple_weather", Condition: "Cloudy", Attribution: "Weather"},
+		},
+		Now: now,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -49,6 +53,9 @@ func TestCreateEntryWritesCanonicalMarkdown(t *testing.T) {
 	if !strings.Contains(text, "source_path: web") || !strings.Contains(text, "She wrote a new story") {
 		t.Fatalf("canonical markdown missing expected content:\n%s", text)
 	}
+	if !strings.Contains(text, "context:") || !strings.Contains(text, "Bar Harbor, ME") || !strings.Contains(text, "apple_weather") {
+		t.Fatalf("canonical markdown missing context:\n%s", text)
+	}
 }
 
 func TestCreateEntryAppliesBirthdateDetails(t *testing.T) {
@@ -56,6 +63,8 @@ func TestCreateEntryAppliesBirthdateDetails(t *testing.T) {
 	peopleConfig := `people:
   - name: Charlotte
     born_at: 2016-10-07T00:56:00Z
+  - name: Chase
+    born_at: 2019-01-07T17:12:00Z
 `
 	if err := os.WriteFile(filepath.Join(vault, "people.yaml"), []byte(peopleConfig), 0o644); err != nil {
 		t.Fatal(err)
@@ -64,17 +73,19 @@ func TestCreateEntryAppliesBirthdateDetails(t *testing.T) {
 	entry, err := CreateEntry(vault, CreateEntryInput{
 		CreatedAt:    time.Date(2025, 9, 28, 4, 0, 0, 0, time.UTC),
 		BodyMarkdown: "* A birthday-aware entry.",
-		People:       []string{"Charlotte"},
 		Now:          time.Date(2025, 9, 28, 5, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entry.SubjectDetails) != 1 {
-		t.Fatalf("expected one detail, got %+v", entry.SubjectDetails)
+	if len(entry.SubjectDetails) != 2 {
+		t.Fatalf("expected configured people details, got %+v", entry.SubjectDetails)
 	}
 	if entry.SubjectDetails[0].AgeText != "8 years, 11 months, 21 days, 3 hours, 4 minutes" {
 		t.Fatalf("unexpected subject detail %+v", entry.SubjectDetails[0])
+	}
+	if entry.SubjectDetails[1].Name != "Chase" {
+		t.Fatalf("expected Chase detail, got %+v", entry.SubjectDetails[1])
 	}
 
 	data, err := os.ReadFile(entry.VaultPath)
@@ -110,6 +121,9 @@ func TestUpdateEntryRewritesCanonicalMarkdown(t *testing.T) {
 		MarkdownPath: "assets/2026/06/entry/photo.jpg",
 		ByteCount:    123,
 	}}
+	entry.Context = EntryContext{
+		Location: &LocationContext{Label: "Portland, ME", Precision: "place"},
+	}
 
 	updated, err := UpdateEntry(vault, entry, UpdateEntryInput{
 		CreatedAt:    time.Date(2026, 6, 23, 4, 0, 0, 0, time.UTC),
@@ -131,6 +145,9 @@ func TestUpdateEntryRewritesCanonicalMarkdown(t *testing.T) {
 	}
 	if len(updated.Attachments) != 1 || updated.Attachments[0].ID != "asset-1" {
 		t.Fatalf("attachments not preserved: %+v", updated.Attachments)
+	}
+	if updated.Context.Location == nil || updated.Context.Location.Label != "Portland, ME" {
+		t.Fatalf("context not preserved: %+v", updated.Context)
 	}
 	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
 		t.Fatalf("expected old path removed, err=%v", err)

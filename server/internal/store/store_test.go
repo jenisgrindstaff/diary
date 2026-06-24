@@ -22,6 +22,7 @@ func TestReplaceIndexAndFetchEntries(t *testing.T) {
 	}
 
 	now := time.Now().UTC()
+	steps := 8432
 	entry := diary.Entry{
 		ID:             "entry-1",
 		CreatedAt:      now.Add(-time.Hour),
@@ -40,6 +41,10 @@ func TestReplaceIndexAndFetchEntries(t *testing.T) {
 			AgeText: "8 years, 4 months",
 			RawText: "**Charlotte:** 8 years, 4 months",
 		}},
+		Context: diary.EntryContext{
+			Location: &diary.LocationContext{Label: "Bar Harbor, ME", Precision: "place"},
+			Activity: &diary.ActivityContext{Steps: &steps},
+		},
 	}
 
 	tombstone := diary.Tombstone{
@@ -73,6 +78,17 @@ func TestReplaceIndexAndFetchEntries(t *testing.T) {
 	}
 	if len(fetched.SubjectDetails) != 1 || fetched.SubjectDetails[0].AgeText != "8 years, 4 months" {
 		t.Fatalf("unexpected subject details: %+v", fetched.SubjectDetails)
+	}
+	if fetched.Context.Location == nil || fetched.Context.Location.Label != "Bar Harbor, ME" {
+		t.Fatalf("unexpected context: %+v", fetched.Context)
+	}
+
+	hits, err := st.Search("Bar Harbor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0].ID != "entry-1" {
+		t.Fatalf("expected context to be searchable, got %+v", hits)
 	}
 
 	tombstones, tombstoneCursor, err := st.TombstonesUpdatedSince(cursor)

@@ -5,19 +5,79 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct EntryDetailResolver: View {
-    @Query private var entries: [DiaryEntry]
+    @Environment(\.modelContext) private var modelContext
+
+    @State private var currentEntryID: String
+    @State private var entry: DiaryEntry?
 
     init(entryID: String) {
-        _entries = Query(filter: #Predicate<DiaryEntry> { $0.id == entryID })
+        _currentEntryID = State(initialValue: entryID)
     }
 
     var body: some View {
-        if let entry = entries.first {
-            EntryDetailView(entry: entry)
-        } else {
-            ContentUnavailableView("Entry Missing", systemImage: "doc.questionmark")
+        Group {
+            if let entry {
+                EntryDetailView(entry: entry) { direction in
+                    navigate(direction)
+                }
+            } else {
+                ContentUnavailableView("Entry Missing", systemImage: "doc.questionmark")
+            }
+        }
+        .task(id: currentEntryID) {
+            loadEntry()
         }
     }
+
+    private func loadEntry() {
+        var descriptor = FetchDescriptor<DiaryEntry>(
+            predicate: #Predicate { $0.id == currentEntryID }
+        )
+        descriptor.fetchLimit = 1
+        entry = try? modelContext.fetch(descriptor).first
+    }
+
+    private func navigate(_ direction: EntryNavigationDirection) {
+        guard let entry else { return }
+
+        let descriptor: FetchDescriptor<DiaryEntry>
+        switch direction {
+        case .newer:
+            descriptor = adjacentEntryDescriptor(
+                predicateDate: entry.createdAt,
+                isNewer: true
+            )
+        case .older:
+            descriptor = adjacentEntryDescriptor(
+                predicateDate: entry.createdAt,
+                isNewer: false
+            )
+        }
+
+        guard let nextEntry = try? modelContext.fetch(descriptor).first else { return }
+        currentEntryID = nextEntry.id
+    }
+
+    private func adjacentEntryDescriptor(predicateDate: Date, isNewer: Bool) -> FetchDescriptor<DiaryEntry> {
+        var descriptor = if isNewer {
+            FetchDescriptor<DiaryEntry>(
+                predicate: #Predicate { !$0.isTombstoned && $0.createdAt > predicateDate },
+                sortBy: [SortDescriptor(\.createdAt, order: .forward)]
+            )
+        } else {
+            FetchDescriptor<DiaryEntry>(
+                predicate: #Predicate { !$0.isTombstoned && $0.createdAt < predicateDate },
+                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            )
+        }
+        descriptor.fetchLimit = 1
+        return descriptor
+    }
+}
+
+enum EntryNavigationDirection {
+    case newer
+    case older
 }
 
 struct EntryDetailView: View {
@@ -26,6 +86,7 @@ struct EntryDetailView: View {
     @Environment(AppState.self) private var appState
 
     let entry: DiaryEntry
+    var navigate: ((EntryNavigationDirection) -> Void)?
     @Query(sort: \PendingChange.createdAt, order: .forward) private var pendingChanges: [PendingChange]
 
     @State private var syncCoordinator = SyncCoordinator()
@@ -33,6 +94,7 @@ struct EntryDetailView: View {
     @State private var isConfirmingDelete = false
     @State private var isDeleting = false
     @State private var deleteErrorMessage: String?
+    @State private var fullScreenAttachment: FullScreenAttachment?
 
     private var pendingChange: PendingChange? {
         pendingChanges.first { $0.entryID == entry.id }
@@ -45,31 +107,16 @@ struct EntryDetailView: View {
                     PendingDetailBanner(change: pendingChange)
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(entry.createdAt, format: .dateTime.weekday(.wide).month(.wide).day().year())
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                EntryDetailHeader(entry: entry)
 
-                    Text(entry.displayTitle)
-                        .font(.largeTitle)
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                if !entry.people.isEmpty || !entry.tags.isEmpty {
-                    MetadataSection(entry: entry)
-                }
-
-                if !entry.subjectDetails.isEmpty {
-                    SubjectDetailsView(subjectDetails: entry.subjectDetails)
+                if !entry.entryContext.isEmpty {
+                    EntryContextSection(context: entry.entryContext)
                 }
 
                 if !entry.attachments.isEmpty {
-                    AttachmentGridView(attachments: entry.attachments)
+                    AttachmentGridView(attachments: entry.attachments) { attachment in
+                        fullScreenAttachment = FullScreenAttachment(id: attachment.id)
+                    }
                 }
 
                 MarkdownText(markdown: entry.bodyMarkdown)
@@ -84,6 +131,7 @@ struct EntryDetailView: View {
         }
         .navigationTitle(entry.createdAt.formatted(date: .abbreviated, time: .omitted))
         .navigationBarTitleDisplayMode(.inline)
+        .simultaneousGesture(entrySwipeGesture)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("Delete", systemImage: "trash", role: .destructive) {
@@ -99,6 +147,12 @@ struct EntryDetailView: View {
         }
         .sheet(isPresented: $isPresentingEdit) {
             EditEntryView(entry: entry, syncCoordinator: syncCoordinator)
+        }
+        .fullScreenCover(item: $fullScreenAttachment) { selection in
+            AttachmentFullScreenGallery(
+                attachments: entry.attachments,
+                selectedID: selection.id
+            )
         }
         .confirmationDialog(
             "Delete Entry?",
@@ -119,6 +173,17 @@ struct EntryDetailView: View {
         } message: {
             Text(deleteErrorMessage ?? "The entry could not be deleted.")
         }
+    }
+
+    private var entrySwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 44)
+            .onEnded { value in
+                guard let navigate else { return }
+                let width = value.translation.width
+                let height = value.translation.height
+                guard abs(width) > 90, abs(width) > abs(height) * 1.5 else { return }
+                navigate(width < 0 ? .older : .newer)
+            }
     }
 
     private var deleteErrorBinding: Binding<Bool> {
@@ -148,6 +213,10 @@ struct EntryDetailView: View {
     }
 }
 
+private struct FullScreenAttachment: Identifiable {
+    let id: String
+}
+
 private struct PendingDetailBanner: View {
     let change: PendingChange
 
@@ -175,14 +244,47 @@ private struct PendingDetailBanner: View {
     }
 }
 
+private struct EntryDetailHeader: View {
+    let entry: DiaryEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                Text(entry.createdAt, format: .dateTime.day())
+                    .font(.system(size: 64, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.createdAt, format: .dateTime.month(.wide).year())
+                        .font(.title3.weight(.semibold))
+
+                    Text(entry.createdAt, format: .dateTime.weekday(.wide))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+
+            Text(entry.displayTitle)
+                .font(.largeTitle.weight(.semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+
+            if !entry.subjectDetails.isEmpty {
+                SubjectDetailsView(subjectDetails: entry.subjectDetails)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 private struct EditEntryView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
 
     @Query private var currentEntries: [DiaryEntry]
-    @Query(sort: \DiarySuggestion.count, order: .reverse) private var suggestions: [DiarySuggestion]
-
     let syncCoordinator: SyncCoordinator
 
     private let entryID: String
@@ -191,9 +293,8 @@ private struct EditEntryView: View {
     @State private var expectedServerRevision: String
     @State private var attachmentsSnapshot: [DiaryAttachment]
     @State private var title: String
-    @State private var peopleText: String
-    @State private var tagsText: String
     @State private var bodyMarkdown: String
+    @State private var capturedContext: DiaryEntryContext
     @State private var removedAttachmentIDs: Set<String> = []
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedMedia: [MediaUploadDraft] = []
@@ -211,9 +312,8 @@ private struct EditEntryView: View {
         _expectedServerRevision = State(initialValue: entry.serverRevision)
         _attachmentsSnapshot = State(initialValue: entry.attachments)
         _title = State(initialValue: entry.title)
-        _peopleText = State(initialValue: entry.people.joined(separator: ", "))
-        _tagsText = State(initialValue: entry.tags.joined(separator: ", "))
         _bodyMarkdown = State(initialValue: entry.bodyMarkdown)
+        _capturedContext = State(initialValue: entry.entryContext)
     }
 
     private var canSave: Bool {
@@ -226,10 +326,6 @@ private struct EditEntryView: View {
         attachmentsSnapshot.filter { !removedAttachmentIDs.contains($0.id) }
     }
 
-    private var draftSuggestions: DraftSuggestions {
-        DraftSuggestions(suggestions: suggestions)
-    }
-
     var body: some View {
         NavigationStack {
             Form {
@@ -237,17 +333,6 @@ private struct EditEntryView: View {
                     DatePicker("Date", selection: $createdAt)
                     TextField("Title", text: $title)
                         .textInputAutocapitalization(.sentences)
-                    TextField("People", text: $peopleText)
-                        .textInputAutocapitalization(.words)
-                    TextField("Tags", text: $tagsText)
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled()
-                    DraftSuggestionStrip(
-                        peopleText: $peopleText,
-                        tagsText: $tagsText,
-                        suggestions: draftSuggestions
-                    )
-                    DraftTokenPreview(peopleText: peopleText, tagsText: tagsText)
                 }
 
                 Section("Markdown") {
@@ -293,6 +378,8 @@ private struct EditEntryView: View {
 
                     SelectedMediaPreviewGrid(media: selectedMedia, remove: removeSelectedMedia)
                 }
+
+                ContextCaptureSection(context: $capturedContext, entryDate: createdAt)
 
                 if let conflictMessage {
                     Section {
@@ -376,8 +463,7 @@ private struct EditEntryView: View {
             expectedServerRevision: expectedServerRevision,
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             bodyMarkdown: bodyMarkdown.trimmingCharacters(in: .whitespacesAndNewlines),
-            people: Self.cleanList(peopleText),
-            tags: Self.cleanList(tagsText)
+            context: capturedContext
         )
 
         do {
@@ -411,15 +497,10 @@ private struct EditEntryView: View {
         expectedServerRevision = currentEntry.serverRevision
         attachmentsSnapshot = currentEntry.attachments
         title = currentEntry.title
-        peopleText = currentEntry.people.joined(separator: ", ")
-        tagsText = currentEntry.tags.joined(separator: ", ")
         bodyMarkdown = currentEntry.bodyMarkdown
+        capturedContext = currentEntry.entryContext
         conflictMessage = nil
         isShowingConflictAlert = false
-    }
-
-    private static func cleanList(_ value: String) -> [String] {
-        DraftTokenPreview.cleanList(value)
     }
 
     private func loadMedia(from items: [PhotosPickerItem]) async {
@@ -503,15 +584,12 @@ private struct SubjectDetailsView: View {
 
     var body: some View {
         if !visibleDetails.isEmpty {
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(visibleDetails, id: \.stableID) { detail in
-                        SubjectChip(detail: detail)
-                    }
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(visibleDetails, id: \.stableID) { detail in
+                    SubjectChip(detail: detail)
                 }
-                .padding(.vertical, 2)
             }
-            .scrollIndicators(.hidden)
+            .padding(.vertical, 2)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Subject details")
         }
@@ -528,7 +606,7 @@ private struct SubjectChip: View {
                     .fontWeight(.semibold)
             }
 
-            Text(detail.displayText)
+            Text(shortAgeText)
                 .foregroundStyle(.secondary)
         }
         .font(.footnote)
@@ -536,28 +614,54 @@ private struct SubjectChip: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
         .background(.quaternary, in: Capsule())
+        .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .combine)
+    }
+
+    private var shortAgeText: String {
+        let parts = detail.displayText
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let yearMonthParts = parts.filter { part in
+            part.localizedCaseInsensitiveContains("year")
+            || part.localizedCaseInsensitiveContains("month")
+        }
+
+        let nonZeroParts = yearMonthParts.filter { part in
+            !part.hasPrefix("0 ")
+        }
+
+        if !nonZeroParts.isEmpty {
+            return nonZeroParts.joined(separator: ", ")
+        }
+
+        if !yearMonthParts.isEmpty {
+            return yearMonthParts.joined(separator: ", ")
+        }
+
+        return parts.prefix(2).joined(separator: ", ")
     }
 }
 
-private struct MetadataSection: View {
-    let entry: DiaryEntry
+private struct EntryContextSection: View {
+    let context: DiaryEntryContext
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if !entry.people.isEmpty {
-                LabeledContent("People") {
-                    FlowText(items: entry.people)
-                }
-            }
+            Text("Context")
+                .font(.headline)
 
-            if !entry.tags.isEmpty {
-                LabeledContent("Tags") {
-                    FlowText(items: entry.tags.map { "#\($0)" })
-                }
+            ContextChipFlow(chips: context.summaryChips)
+
+            if context.weather?.attribution == "Weather" {
+                Text("Weather")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
-        .font(.subheadline)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

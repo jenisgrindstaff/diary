@@ -35,6 +35,11 @@ final class SyncImporterTests: XCTestCase {
             subjectDetails: [
                 SubjectDetailDTO(name: "Charlotte", label: "age", ageText: "9 years", rawText: nil)
             ],
+            context: DiaryEntryContext(
+                location: DiaryLocationContext(label: "Bar Harbor, ME", latitude: 44.39, longitude: -68.2, precision: "place"),
+                weather: DiaryWeatherContext(provider: "apple_weather", condition: "Cloudy", temperatureF: 72, attribution: "Weather"),
+                activity: DiaryActivityContext(steps: 8432)
+            ),
             attachments: [attachment]
         )
         let envelope = EntrySyncEnvelope(entries: [entry], deletedEntryIDs: [], nextCursor: "cursor-1")
@@ -46,6 +51,8 @@ final class SyncImporterTests: XCTestCase {
         XCTAssertEqual(entries.first?.id, "entry-1")
         XCTAssertEqual(entries.first?.tags, ["family"])
         XCTAssertEqual(entries.first?.subjectDetails.first?.ageText, "9 years")
+        XCTAssertEqual(entries.first?.entryContext.location?.label, "Bar Harbor, ME")
+        XCTAssertTrue(entries.first?.searchTextStorage.localizedStandardContains("Cloudy") == true)
         XCTAssertTrue(entries.first?.searchTextStorage.localizedStandardContains("Charlotte") == true)
         XCTAssertEqual(entries.first?.attachments.count, 1)
         XCTAssertEqual(checkpoint.cursor, "cursor-1")

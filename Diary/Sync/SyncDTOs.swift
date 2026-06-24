@@ -75,6 +75,7 @@ struct EntryDTO: Decodable, Sendable {
     let tags: [String]
     let people: [String]
     let subjectDetails: [SubjectDetailDTO]
+    let context: DiaryEntryContext
     let attachments: [AttachmentDTO]
 
     init(
@@ -89,6 +90,7 @@ struct EntryDTO: Decodable, Sendable {
         tags: [String],
         people: [String],
         subjectDetails: [SubjectDetailDTO] = [],
+        context: DiaryEntryContext = .empty,
         attachments: [AttachmentDTO]
     ) {
         self.id = id
@@ -102,6 +104,7 @@ struct EntryDTO: Decodable, Sendable {
         self.tags = tags
         self.people = people
         self.subjectDetails = subjectDetails
+        self.context = context
         self.attachments = attachments
     }
 
@@ -118,6 +121,7 @@ struct EntryDTO: Decodable, Sendable {
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
         people = try container.decodeIfPresent([String].self, forKey: .people) ?? []
         subjectDetails = try container.decodeIfPresent([SubjectDetailDTO].self, forKey: .subjectDetails) ?? []
+        context = try container.decodeIfPresent(DiaryEntryContext.self, forKey: .context) ?? .empty
         attachments = try container.decodeIfPresent([AttachmentDTO].self, forKey: .attachments) ?? []
     }
 
@@ -133,6 +137,7 @@ struct EntryDTO: Decodable, Sendable {
         case tags
         case people
         case subjectDetails = "subject_details"
+        case context
         case attachments
     }
 }
@@ -248,14 +253,16 @@ struct EntryWriteDraft: Codable, Sendable {
     let bodyMarkdown: String
     let people: [String]
     let tags: [String]
+    let context: DiaryEntryContext
 
     init(
         createdAt: Date,
         expectedServerRevision: String? = nil,
         title: String,
         bodyMarkdown: String,
-        people: [String],
-        tags: [String]
+        people: [String] = [],
+        tags: [String] = [],
+        context: DiaryEntryContext = .empty
     ) {
         self.createdAt = createdAt
         self.expectedServerRevision = expectedServerRevision
@@ -263,6 +270,7 @@ struct EntryWriteDraft: Codable, Sendable {
         self.bodyMarkdown = bodyMarkdown
         self.people = people
         self.tags = tags
+        self.context = context
     }
 }
 
@@ -282,6 +290,7 @@ struct EntryWriteRequest: Encodable, Sendable {
     let bodyMarkdown: String
     let people: [String]
     let tags: [String]
+    let context: DiaryEntryContext
 
     private enum CodingKeys: String, CodingKey {
         case createdAt = "created_at"
@@ -291,5 +300,6 @@ struct EntryWriteRequest: Encodable, Sendable {
         case bodyMarkdown = "body_markdown"
         case people
         case tags
+        case context
     }
 }

@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,12 +19,8 @@ import (
 
 type homePageData struct {
 	Entries      []entryListItem
-	Subjects     []subjectCount
-	Tags         []tagCount
 	Archive      []archiveCount
 	Query        string
-	Subject      string
-	Tag          string
 	Year         string
 	Month        string
 	Message      string
@@ -52,8 +47,6 @@ type entryFormPageData struct {
 	AllowMedia   bool
 	Date         string
 	Title        string
-	People       string
-	Tags         string
 	BodyMarkdown string
 	Message      string
 	CSRFToken    string
@@ -63,16 +56,6 @@ type entryFormPageData struct {
 type entryListItem struct {
 	diary.Entry
 	CleanExcerpt string
-}
-
-type subjectCount struct {
-	Name  string
-	Count int
-}
-
-type tagCount struct {
-	Name  string
-	Count int
 }
 
 type archiveCount struct {
@@ -90,8 +73,6 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	subject := strings.TrimSpace(r.URL.Query().Get("subject"))
-	tag := strings.TrimSpace(r.URL.Query().Get("tag"))
 	year := strings.TrimSpace(r.URL.Query().Get("year"))
 	month := strings.TrimSpace(r.URL.Query().Get("month"))
 	message := strings.TrimSpace(r.URL.Query().Get("message"))
@@ -103,17 +84,13 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 			searchEntries = []diary.Entry{}
 		}
 	}
-	filtered := listItems(filterEntries(searchEntries, subject, tag, year, month))
+	filtered := listItems(filterEntries(searchEntries, year, month))
 	importFiles, _ := markdownFiles(s.cfg.ImportDir)
 
 	data := homePageData{
 		Entries:      filtered,
-		Subjects:     subjectCounts(entries),
-		Tags:         tagCounts(entries),
 		Archive:      archiveCounts(entries),
 		Query:        query,
-		Subject:      subject,
-		Tag:          tag,
 		Year:         year,
 		Month:        month,
 		Message:      message,
@@ -211,8 +188,6 @@ func (s *Server) handleCreateEntry(w http.ResponseWriter, r *http.Request) {
 		AllowMedia:   true,
 		Date:         strings.TrimSpace(r.FormValue("date")),
 		Title:        strings.TrimSpace(r.FormValue("title")),
-		People:       strings.TrimSpace(r.FormValue("people")),
-		Tags:         strings.TrimSpace(r.FormValue("tags")),
 		BodyMarkdown: strings.TrimSpace(r.FormValue("body_markdown")),
 		CSRFToken:    ensureCSRFToken(w, r),
 	}
@@ -229,8 +204,6 @@ func (s *Server) handleCreateEntry(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:    createdAt,
 		Title:        data.Title,
 		BodyMarkdown: data.BodyMarkdown,
-		People:       splitFormList(data.People),
-		Tags:         splitFormList(data.Tags),
 		Now:          time.Now().UTC(),
 	})
 	if err != nil {
@@ -299,8 +272,6 @@ func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
 		SubmitLabel:  "Save Entry",
 		Date:         strings.TrimSpace(r.FormValue("date")),
 		Title:        strings.TrimSpace(r.FormValue("title")),
-		People:       strings.TrimSpace(r.FormValue("people")),
-		Tags:         strings.TrimSpace(r.FormValue("tags")),
 		BodyMarkdown: strings.TrimSpace(r.FormValue("body_markdown")),
 		CSRFToken:    ensureCSRFToken(w, r),
 	}
@@ -317,8 +288,6 @@ func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:    createdAt,
 		Title:        data.Title,
 		BodyMarkdown: data.BodyMarkdown,
-		People:       splitFormList(data.People),
-		Tags:         splitFormList(data.Tags),
 		Now:          time.Now().UTC(),
 	})
 	if err != nil {
@@ -470,16 +439,10 @@ func (s *Server) handleWebReindex(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/?message="+urlMessage("Reindexed vault"), http.StatusSeeOther)
 }
 
-func filterEntries(entries []diary.Entry, subject string, tag string, year string, month string) []diary.Entry {
+func filterEntries(entries []diary.Entry, year string, month string) []diary.Entry {
 	filtered := make([]diary.Entry, 0, len(entries))
 
 	for _, entry := range entries {
-		if subject != "" && !slices.Contains(entry.People, subject) {
-			continue
-		}
-		if tag != "" && !slices.Contains(entry.Tags, tag) {
-			continue
-		}
 		if year != "" && entry.CreatedAt.Format("2006") != year {
 			continue
 		}
@@ -502,50 +465,6 @@ func listItems(entries []diary.Entry) []entryListItem {
 		})
 	}
 	return items
-}
-
-func subjectCounts(entries []diary.Entry) []subjectCount {
-	counts := map[string]int{}
-	for _, entry := range entries {
-		for _, subject := range entry.People {
-			counts[subject]++
-		}
-	}
-
-	subjects := make([]subjectCount, 0, len(counts))
-	for name, count := range counts {
-		subjects = append(subjects, subjectCount{Name: name, Count: count})
-	}
-	sort.Slice(subjects, func(i, j int) bool {
-		if subjects[i].Count == subjects[j].Count {
-			return subjects[i].Name < subjects[j].Name
-		}
-		return subjects[i].Count > subjects[j].Count
-	})
-
-	return subjects
-}
-
-func tagCounts(entries []diary.Entry) []tagCount {
-	counts := map[string]int{}
-	for _, entry := range entries {
-		for _, tag := range entry.Tags {
-			counts[tag]++
-		}
-	}
-
-	tags := make([]tagCount, 0, len(counts))
-	for name, count := range counts {
-		tags = append(tags, tagCount{Name: name, Count: count})
-	}
-	sort.Slice(tags, func(i, j int) bool {
-		if tags[i].Count == tags[j].Count {
-			return tags[i].Name < tags[j].Name
-		}
-		return tags[i].Count > tags[j].Count
-	})
-
-	return tags
 }
 
 func archiveCounts(entries []diary.Entry) []archiveCount {
@@ -607,18 +526,6 @@ func markdownFiles(root string) ([]string, error) {
 	return files, err
 }
 
-func splitFormList(value string) []string {
-	parts := strings.Split(value, ",")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-	return out
-}
-
 func entryFormDataForEntry(entry diary.Entry) entryFormPageData {
 	return entryFormPageData{
 		Heading:      "Edit Entry",
@@ -626,8 +533,6 @@ func entryFormDataForEntry(entry diary.Entry) entryFormPageData {
 		SubmitLabel:  "Save Entry",
 		Date:         entry.CreatedAt.Format("2006-01-02"),
 		Title:        entry.Title,
-		People:       strings.Join(entry.People, ", "),
-		Tags:         strings.Join(entry.Tags, ", "),
 		BodyMarkdown: entry.BodyMarkdown,
 	}
 }
@@ -670,6 +575,46 @@ func cleanExcerpt(value string) string {
 	return value
 }
 
+func contextChips(context diary.EntryContext) []string {
+	if context.IsZero() {
+		return nil
+	}
+
+	chips := []string{}
+	if context.Location != nil && strings.TrimSpace(context.Location.Label) != "" {
+		chips = append(chips, context.Location.Label)
+	}
+	if context.Weather != nil {
+		weather := strings.TrimSpace(context.Weather.Condition)
+		if context.Weather.TemperatureF != nil {
+			temp := strconv.FormatFloat(*context.Weather.TemperatureF, 'f', 0, 64) + "F"
+			if weather == "" {
+				weather = temp
+			} else {
+				weather += " " + temp
+			}
+		}
+		if weather != "" {
+			chips = append(chips, weather)
+		}
+	}
+	if context.Activity != nil {
+		if context.Activity.Steps != nil {
+			chips = append(chips, strconv.Itoa(*context.Activity.Steps)+" steps")
+		}
+		if context.Activity.ExerciseMinutes != nil {
+			chips = append(chips, strconv.Itoa(*context.Activity.ExerciseMinutes)+" exercise min")
+		}
+		for _, workout := range context.Activity.Workouts {
+			if strings.TrimSpace(workout.Type) != "" {
+				chips = append(chips, workout.Type)
+			}
+		}
+	}
+
+	return chips
+}
+
 var pageTemplate = template.Must(template.New("pages").Funcs(template.FuncMap{
 	"date": func(t time.Time) string {
 		return t.Format("Jan 2, 2006")
@@ -679,16 +624,10 @@ var pageTemplate = template.Must(template.New("pages").Funcs(template.FuncMap{
 	},
 	"join":     strings.Join,
 	"urlquery": url.QueryEscape,
-	"queryFor": func(query string, subject string, tag string, year string, month string) string {
+	"queryFor": func(query string, year string, month string) string {
 		values := url.Values{}
 		if query != "" {
 			values.Set("q", query)
-		}
-		if subject != "" {
-			values.Set("subject", subject)
-		}
-		if tag != "" {
-			values.Set("tag", tag)
 		}
 		if year != "" {
 			values.Set("year", year)
@@ -705,6 +644,7 @@ var pageTemplate = template.Must(template.New("pages").Funcs(template.FuncMap{
 	"trim": func(value string) string {
 		return strings.TrimSpace(value)
 	},
+	"contextChips": contextChips,
 	"webAsset": func(asset diary.Attachment) string {
 		return "/assets/" + url.PathEscape(asset.ID)
 	},
@@ -1095,30 +1035,14 @@ const pageTemplates = `
   <aside>
     <form method="get" action="/">
               <input type="search" name="q" value="{{.Query}}" placeholder="Search entries">
-              {{if .Subject}}<input type="hidden" name="subject" value="{{.Subject}}">{{end}}
-              {{if .Tag}}<input type="hidden" name="tag" value="{{.Tag}}">{{end}}
               {{if .Year}}<input type="hidden" name="year" value="{{.Year}}">{{end}}
               {{if .Month}}<input type="hidden" name="month" value="{{.Month}}">{{end}}
-              <p><button type="submit">Search</button> {{if or .Query .Subject .Tag .Year .Month}}<a class="button" href="/">Clear</a>{{end}}</p>
+              <p><button type="submit">Search</button> {{if or .Query .Year .Month}}<a class="button" href="/">Clear</a>{{end}}</p>
             </form>
-            <h2>People</h2>
-            <div class="subjects">
-              {{range .Subjects}}
-        <a class="chip {{if eq $.Subject .Name}}active{{end}}" href="{{queryFor $.Query .Name $.Tag $.Year $.Month}}">{{.Name}} <span class="muted">{{.Count}}</span></a>
-      {{end}}
-    </div>
-    {{if .Tags}}
-    <h2 style="margin-top:22px;">Tags</h2>
-    <div class="subjects">
-      {{range .Tags}}
-        <a class="chip {{if eq $.Tag .Name}}active{{end}}" href="{{queryFor $.Query $.Subject .Name $.Year $.Month}}">#{{.Name}} <span class="muted">{{.Count}}</span></a>
-      {{end}}
-    </div>
-    {{end}}
     <h2 style="margin-top:22px;">Archive</h2>
     <div class="subjects">
       {{range .Archive}}
-        <a class="chip {{if and (eq $.Year .Year) (eq $.Month .Month)}}active{{end}}" href="{{queryFor $.Query $.Subject $.Tag .Year .Month}}">{{.Label}} <span class="muted">{{.Count}}</span></a>
+        <a class="chip {{if and (eq $.Year .Year) (eq $.Month .Month)}}active{{end}}" href="{{queryFor $.Query .Year .Month}}">{{.Label}} <span class="muted">{{.Count}}</span></a>
       {{end}}
     </div>
     <h2 style="margin-top:22px;">Import</h2>
@@ -1142,8 +1066,6 @@ const pageTemplates = `
           <p>{{.CleanExcerpt}}</p>
           <div class="meta">
             <span>{{date .CreatedAt}}</span>
-            {{if .People}}<span>{{join .People ", "}}</span>{{end}}
-            {{if .Tags}}<span>{{join .Tags ", "}}</span>{{end}}
           </div>
         </a>
         {{$lastMonth = $month}}
@@ -1169,14 +1091,6 @@ const pageTemplates = `
     </label>
     <label>Title
       <input type="text" name="title" value="{{.Title}}">
-    </label>
-  </div>
-  <div class="form-row">
-    <label>People
-      <input type="text" name="people" value="{{.People}}">
-    </label>
-    <label>Tags
-      <input type="text" name="tags" value="{{.Tags}}">
     </label>
   </div>
   <label>Markdown
@@ -1221,14 +1135,19 @@ const pageTemplates = `
   <p class="muted">{{date .Entry.CreatedAt}}</p>
   <h1>{{.Entry.Title}}</h1>
   <div class="meta">
-    {{if .Entry.People}}<span>{{join .Entry.People ", "}}</span>{{end}}
-    {{if .Entry.Tags}}<span>{{join .Entry.Tags ", "}}</span>{{end}}
     <span><code>{{.Entry.SourcePath}}</code></span>
   </div>
   {{if .Entry.SubjectDetails}}
     <div class="subject-details">
       {{range .Entry.SubjectDetails}}
         <span class="chip">{{.Name}}{{if .AgeText}} <span class="muted">{{.AgeText}}</span>{{end}}</span>
+      {{end}}
+    </div>
+  {{end}}
+  {{with contextChips .Entry.Context}}
+    <div class="subject-details">
+      {{range .}}
+        <span class="chip">{{.}}</span>
       {{end}}
     </div>
   {{end}}
@@ -1272,13 +1191,18 @@ const pageTemplates = `
   <p class="muted">{{date .Entry.CreatedAt}}</p>
   <h1>{{.Entry.Title}}</h1>
   <div class="meta">
-    {{if .Entry.People}}<span>{{join .Entry.People ", "}}</span>{{end}}
-    {{if .Entry.Tags}}<span>{{join .Entry.Tags ", "}}</span>{{end}}
   </div>
   {{if .Entry.SubjectDetails}}
     <div class="subject-details">
       {{range .Entry.SubjectDetails}}
         <span class="chip">{{.Name}}{{if .AgeText}} <span class="muted">{{.AgeText}}</span>{{end}}</span>
+      {{end}}
+    </div>
+  {{end}}
+  {{with contextChips .Entry.Context}}
+    <div class="subject-details">
+      {{range .}}
+        <span class="chip">{{.}}</span>
       {{end}}
     </div>
   {{end}}

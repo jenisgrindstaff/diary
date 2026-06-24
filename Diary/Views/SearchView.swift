@@ -158,7 +158,7 @@ private struct SearchField: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
 
-            TextField("Entries, tags, people", text: $text)
+            TextField("Search entries", text: $text)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .textFieldStyle(.plain)

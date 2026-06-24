@@ -38,6 +38,7 @@ enum SyncImporter {
             entry.tags = entryDTO.tags
             entry.people = entryDTO.people
             entry.subjectDetails = entryDTO.subjectDetails.map { DiarySubjectDetail(dto: $0) }
+            entry.entryContext = entryDTO.context
             entry.refreshSearchText()
             entry.isTombstoned = false
             entry.syncedAt = syncedAt
