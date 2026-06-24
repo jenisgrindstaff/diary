@@ -97,6 +97,61 @@ func TestCreateEntryAppliesBirthdateDetails(t *testing.T) {
 	}
 }
 
+func TestReadVaultBackfillsBirthdateDetails(t *testing.T) {
+	vault := t.TempDir()
+	peopleConfig := `people:
+  - name: Charlotte
+    born_at: 2016-10-07T00:56:00Z
+  - name: Chase
+    born_at: 2019-01-07T17:12:00Z
+`
+	if err := os.WriteFile(filepath.Join(vault, "people.yaml"), []byte(peopleConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	entryDir := filepath.Join(vault, "entries", "2026", "06")
+	if err := os.MkdirAll(entryDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	entryPath := filepath.Join(entryDir, "2026-06-24-local-test.md")
+	markdown := `---
+id: local-test
+created_at: 2026-06-24T11:57:29.987Z
+updated_at: 2026-06-24T11:57:30.200395Z
+revision: test-revision
+title: This is a local test
+excerpt: This is a local test
+source_path: web
+tags: []
+people: []
+subject_details: []
+attachments: []
+---
+
+This is a local test
+`
+	if err := os.WriteFile(entryPath, []byte(markdown), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := ReadVault(vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || len(entries[0].SubjectDetails) != 2 {
+		t.Fatalf("expected backfilled subject details, got %+v", entries)
+	}
+
+	data, err := os.ReadFile(entryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "subject_details:") || !strings.Contains(text, "age_text: 9 years") {
+		t.Fatalf("expected reindex backfill to persist generated ages:\n%s", text)
+	}
+}
+
 func TestUpdateEntryRewritesCanonicalMarkdown(t *testing.T) {
 	vault := t.TempDir()
 	createdAt := time.Date(2026, 6, 22, 4, 0, 0, 0, time.UTC)

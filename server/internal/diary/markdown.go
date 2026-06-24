@@ -199,7 +199,17 @@ func ReadVault(vaultDir string) ([]Entry, error) {
 		if err != nil {
 			return err
 		}
-		entry = ApplyBirthdateDetails(entry, people)
+		enriched := ApplyBirthdateDetails(entry, people)
+		if !subjectDetailsEqual(entry.SubjectDetails, enriched.SubjectDetails) {
+			data, err := RenderMarkdown(enriched)
+			if err != nil {
+				return err
+			}
+			if err := writeEntryFile(enriched.VaultPath, data); err != nil {
+				return err
+			}
+		}
+		entry = enriched
 		entries = append(entries, entry)
 		return nil
 	})
@@ -211,6 +221,18 @@ func ReadVault(vaultDir string) ([]Entry, error) {
 		return entries[i].CreatedAt.After(entries[j].CreatedAt)
 	})
 	return entries, nil
+}
+
+func subjectDetailsEqual(a []SubjectDetail, b []SubjectDetail) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func splitFrontmatter(data []byte) (frontmatter, string, error) {

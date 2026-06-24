@@ -262,12 +262,25 @@ func TestCreateEntryAPI(t *testing.T) {
 	if payload.Entry.Context.Location == nil || payload.Entry.Context.Location.Label != "Bar Harbor, ME" {
 		t.Fatalf("unexpected context %+v", payload.Entry.Context)
 	}
+	if len(payload.Entry.SubjectDetails) != 2 {
+		t.Fatalf("expected configured age details, got %+v", payload.Entry.SubjectDetails)
+	}
+	if payload.Entry.SubjectDetails[0].Name != "Charlotte" || !strings.HasPrefix(payload.Entry.SubjectDetails[0].AgeText, "9 years") {
+		t.Fatalf("unexpected Charlotte age detail %+v", payload.Entry.SubjectDetails[0])
+	}
 	stored, err := srv.store.Entry(payload.Entry.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(stored.VaultPath); err != nil {
 		t.Fatal(err)
+	}
+	markdown, err := os.ReadFile(stored.VaultPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(markdown), "subject_details:") || !strings.Contains(string(markdown), "age_text: 9 years") {
+		t.Fatalf("canonical markdown missing generated ages:\n%s", string(markdown))
 	}
 	hits, err := srv.store.Search("Cloudy")
 	if err != nil {
@@ -1356,13 +1369,26 @@ func testServerWithImport(t *testing.T) *Server {
 	if err := os.MkdirAll(imports, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	vault := filepath.Join(root, "vault")
+	if err := os.MkdirAll(vault, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	peopleConfig := `people:
+  - name: Charlotte
+    born_at: 2016-10-07T00:56:00Z
+  - name: Chase
+    born_at: 2019-01-07T17:12:00Z
+`
+	if err := os.WriteFile(filepath.Join(vault, "people.yaml"), []byte(peopleConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(imports, "2026-06-22-api.md"), []byte("#### 2026-06-22\n**Charlotte**\n* Hello from the web.\n\n____\n\n#### 2026-06-23\n**Chase**\n* Another entry.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	srv, err := New(Config{
 		Addr:      ":0",
-		VaultDir:  filepath.Join(root, "vault"),
+		VaultDir:  vault,
 		ImportDir: imports,
 		DataDir:   filepath.Join(root, "data"),
 		APIToken:  "secret",

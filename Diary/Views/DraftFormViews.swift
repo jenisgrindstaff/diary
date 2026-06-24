@@ -125,6 +125,29 @@ struct DiaryContextCaptureResult {
     var message: String?
 }
 
+enum DiaryContextCaptureError: LocalizedError {
+    case locationUnavailable(String)
+    case weatherUnsupported
+    case weatherFailed(String)
+    case activityUnavailable(String)
+    case activityFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .locationUnavailable(let detail):
+            "Location unavailable. \(detail)"
+        case .weatherUnsupported:
+            "Weather unavailable. WeatherKit is not available in this build."
+        case .weatherFailed:
+            "Weather unavailable. Check WeatherKit setup and network access."
+        case .activityUnavailable(let detail):
+            "Activity unavailable. \(detail)"
+        case .activityFailed:
+            "Activity unavailable. Health data could not be read for this date."
+        }
+    }
+}
+
 enum DiaryContextCaptureService {
     @MainActor
     static func capture(for entryDate: Date) async -> DiaryContextCaptureResult {
@@ -138,21 +161,21 @@ enum DiaryContextCaptureService {
             context.location = captured.context
             coordinateLocation = captured.location
         } catch {
-            failures.append("Location unavailable")
+            failures.append(message(for: error))
         }
 
         if let coordinateLocation {
             do {
                 context.weather = try await DiaryWeatherCaptureService.capture(location: coordinateLocation)
             } catch {
-                failures.append("Weather unavailable")
+                failures.append(message(for: error))
             }
         }
 
         do {
             context.activity = try await DiaryActivityCaptureService.capture(for: entryDate)
         } catch {
-            failures.append("Activity unavailable")
+            failures.append(message(for: error))
         }
 
         if context.location == nil && context.weather == nil && context.activity == nil {
@@ -161,8 +184,17 @@ enum DiaryContextCaptureService {
 
         return DiaryContextCaptureResult(
             context: context,
-            message: failures.isEmpty ? nil : failures.joined(separator: ". ")
+            message: failures.isEmpty ? nil : failures.joined(separator: " ")
         )
+    }
+
+    private static func message(for error: Error) -> String {
+        if let localizedError = error as? LocalizedError,
+           let description = localizedError.errorDescription {
+            return description
+        }
+
+        return error.localizedDescription
     }
 }
 
@@ -196,7 +228,7 @@ final class DiaryLocationCaptureService: NSObject, @preconcurrency CLLocationMan
 
     private func requestLocation() async throws -> CLLocation {
         guard CLLocationManager.locationServicesEnabled() else {
-            throw CLError(.denied)
+            throw DiaryContextCaptureError.locationUnavailable("Location Services are disabled.")
         }
 
         return try await withCheckedThrowingContinuation { continuation in
@@ -207,9 +239,9 @@ final class DiaryLocationCaptureService: NSObject, @preconcurrency CLLocationMan
             case .notDetermined:
                 manager.requestWhenInUseAuthorization()
             case .denied, .restricted:
-                resume(with: .failure(CLError(.denied)))
+                resume(with: .failure(DiaryContextCaptureError.locationUnavailable("Allow location access in Settings to add place and weather context.")))
             @unknown default:
-                resume(with: .failure(CLError(.denied)))
+                resume(with: .failure(DiaryContextCaptureError.locationUnavailable("Location permission is unavailable.")))
             }
         }
     }
@@ -219,11 +251,11 @@ final class DiaryLocationCaptureService: NSObject, @preconcurrency CLLocationMan
         case .authorizedAlways, .authorizedWhenInUse:
             manager.requestLocation()
         case .denied, .restricted:
-            resume(with: .failure(CLError(.denied)))
+            resume(with: .failure(DiaryContextCaptureError.locationUnavailable("Allow location access in Settings to add place and weather context.")))
         case .notDetermined:
             break
         @unknown default:
-            resume(with: .failure(CLError(.denied)))
+            resume(with: .failure(DiaryContextCaptureError.locationUnavailable("Location permission is unavailable.")))
         }
     }
 
@@ -267,9 +299,14 @@ final class DiaryLocationCaptureService: NSObject, @preconcurrency CLLocationMan
 }
 
 enum DiaryWeatherCaptureService {
-    static func capture(location: CLLocation) async throws -> DiaryWeatherContext? {
+    static func capture(location: CLLocation) async throws -> DiaryWeatherContext {
         #if canImport(WeatherKit)
-        let weather = try await WeatherService.shared.weather(for: location)
+        let weather: Weather
+        do {
+            weather = try await WeatherService.shared.weather(for: location)
+        } catch {
+            throw DiaryContextCaptureError.weatherFailed(error.localizedDescription)
+        }
         let current = weather.currentWeather
         return DiaryWeatherContext(
             provider: "apple_weather",
@@ -282,14 +319,16 @@ enum DiaryWeatherCaptureService {
             fetchedAt: .now
         )
         #else
-        return nil
+        throw DiaryContextCaptureError.weatherUnsupported
         #endif
     }
 }
 
 enum DiaryActivityCaptureService {
     static func capture(for date: Date) async throws -> DiaryActivityContext? {
-        guard HKHealthStore.isHealthDataAvailable() else { return nil }
+        guard HKHealthStore.isHealthDataAvailable() else {
+            throw DiaryContextCaptureError.activityUnavailable("Health data is not available on this device. Use a physical iPhone with Health enabled.")
+        }
         let store = HKHealthStore()
         let readTypes = healthReadTypes()
         try await requestAuthorization(store: store, readTypes: readTypes)
@@ -326,9 +365,11 @@ enum DiaryActivityCaptureService {
 
     private static func requestAuthorization(store: HKHealthStore, readTypes: Set<HKObjectType>) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            store.requestAuthorization(toShare: Set<HKSampleType>(), read: readTypes) { _, error in
+            store.requestAuthorization(toShare: Set<HKSampleType>(), read: readTypes) { success, error in
                 if let error {
-                    continuation.resume(throwing: error)
+                    continuation.resume(throwing: DiaryContextCaptureError.activityFailed(error.localizedDescription))
+                } else if !success {
+                    continuation.resume(throwing: DiaryContextCaptureError.activityUnavailable("Health permission was not granted."))
                 } else {
                     continuation.resume()
                 }
@@ -347,7 +388,11 @@ enum DiaryActivityCaptureService {
         return try await withCheckedThrowingContinuation { continuation in
             let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, statistics, error in
                 if let error {
-                    continuation.resume(throwing: error)
+                    if isNoHealthDataError(error) {
+                        continuation.resume(returning: nil)
+                    } else {
+                        continuation.resume(throwing: DiaryContextCaptureError.activityFailed(error.localizedDescription))
+                    }
                 } else {
                     continuation.resume(returning: statistics?.sumQuantity()?.doubleValue(for: unit))
                 }
@@ -366,7 +411,11 @@ enum DiaryActivityCaptureService {
                 sortDescriptors: nil
             ) { _, samples, error in
                 if let error {
-                    continuation.resume(throwing: error)
+                    if isNoHealthDataError(error) {
+                        continuation.resume(returning: [])
+                    } else {
+                        continuation.resume(throwing: DiaryContextCaptureError.activityFailed(error.localizedDescription))
+                    }
                     return
                 }
 
@@ -384,6 +433,11 @@ enum DiaryActivityCaptureService {
             }
             store.execute(query)
         }
+    }
+
+    private static func isNoHealthDataError(_ error: Error) -> Bool {
+        guard let healthError = error as? HKError else { return false }
+        return healthError.code == .errorNoData
     }
 
     private static func workoutActiveEnergyKcal(_ workout: HKWorkout) -> Double? {

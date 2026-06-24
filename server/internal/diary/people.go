@@ -108,6 +108,14 @@ func ApplyBirthdateDetails(entry Entry, people []Person) Entry {
 	return entry
 }
 
+func ApplyConfiguredBirthdateDetails(vaultDir string, entry Entry) (Entry, error) {
+	people, err := LoadPeople(vaultDir)
+	if err != nil {
+		return Entry{}, err
+	}
+	return ApplyBirthdateDetails(entry, people), nil
+}
+
 func containsName(haystack string, name string) bool {
 	name = strings.ToLower(strings.TrimSpace(name))
 	if name == "" {

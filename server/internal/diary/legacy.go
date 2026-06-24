@@ -185,6 +185,9 @@ func extractSubjectDetails(body string) []SubjectDetail {
 func subjectsFromDetails(details []SubjectDetail) []string {
 	subjects := make([]string, 0, len(details))
 	for _, detail := range details {
+		if detail.RawText == "" {
+			continue
+		}
 		if detail.Name != "" {
 			subjects = append(subjects, detail.Name)
 		}

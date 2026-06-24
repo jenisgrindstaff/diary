@@ -62,6 +62,10 @@ func AttachFile(vaultDir string, entry Entry, filename string, contentType strin
 
 	entry.Attachments = append(entry.Attachments, attachment)
 	entry.UpdatedAt = now
+	entry, err = ApplyConfiguredBirthdateDetails(vaultDir, entry)
+	if err != nil {
+		return Entry{}, Attachment{}, err
+	}
 	entry.ServerRevision = stableRevision(entry.BodyMarkdown, entry.UpdatedAt)
 	entry.VaultPath = filepath.Clean(entry.VaultPath)
 
@@ -105,6 +109,10 @@ func RemoveAttachment(vaultDir string, entry Entry, attachmentID string, now tim
 
 	entry.Attachments = remaining
 	entry.UpdatedAt = now
+	entry, err := ApplyConfiguredBirthdateDetails(vaultDir, entry)
+	if err != nil {
+		return Entry{}, Attachment{}, err
+	}
 	entry.ServerRevision = stableRevision(entry.BodyMarkdown, entry.UpdatedAt)
 	entry.VaultPath = filepath.Clean(entry.VaultPath)
 
